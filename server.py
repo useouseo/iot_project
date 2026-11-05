@@ -11,6 +11,7 @@ import secrets
 import sqlite3
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.cookies import SimpleCookie, CookieError
 from urllib.parse import urlparse, parse_qs
 
 ROOT = Path(__file__).resolve().parent
@@ -52,6 +53,16 @@ def digest(token):
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+def password_hash(password, salt):
+    return hashlib.pbkdf2_hmac('sha256',password.encode(),bytes.fromhex(salt),200_000).hex()
+
+
+def password_value(value):
+    if not isinstance(value,str) or not 4<=len(value)<=128:
+        raise Problem(400,'비밀번호는 4~128자로 입력하세요')
+    return value
+
+
 class Store:
     def __init__(self, path, demo=False):
         self.path, self.demo = str(path), demo
@@ -73,6 +84,15 @@ class Store:
             CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, at REAL NOT NULL, action TEXT NOT NULL);
             ''')
+            if 'active' not in {r['name'] for r in db.execute('PRAGMA table_info(toilets)')}:
+                db.execute('ALTER TABLE toilets ADD COLUMN active INTEGER NOT NULL DEFAULT 1')
+            db.executescript('''
+            CREATE TABLE IF NOT EXISTS admin_credentials(id INTEGER PRIMARY KEY CHECK(id=1),salt TEXT NOT NULL,password_hash TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS admin_sessions(token_hash TEXT PRIMARY KEY,expires_at REAL NOT NULL);
+            ''')
+            if not db.execute('SELECT 1 FROM admin_credentials WHERE id=1').fetchone():
+                salt=secrets.token_hex(16)
+                db.execute('INSERT INTO admin_credentials VALUES(1,?,?)',(salt,password_hash('1234',salt)))
             if not db.execute('SELECT count(*) FROM toilets').fetchone()[0]:
                 db.executemany('INSERT INTO toilets(id,name,stalls,x,y) VALUES(?,?,?,?,?)', [
                     (1,'화장실 A',4,22,28), (2,'화장실 B',4,78,48)])
@@ -91,16 +111,71 @@ class Store:
 
     def all_devices(self):
         with self.connect() as db:
-            return [dict(r) for r in db.execute('SELECT id,toilet_id,last_seen,quality FROM devices')]
+            return [dict(r) for r in db.execute('SELECT d.id,d.toilet_id,d.last_seen,d.quality FROM devices d JOIN toilets t ON t.id=d.toilet_id WHERE t.active=1')]
+
+    def login(self, password):
+        password=password_value(password)
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row=db.execute('SELECT * FROM admin_credentials WHERE id=1').fetchone()
+            if not hmac.compare_digest(row['password_hash'],password_hash(password,row['salt'])):
+                raise Problem(401,'비밀번호가 올바르지 않습니다')
+            return self.new_session(db)
+
+    def new_session(self,db):
+        token=secrets.token_urlsafe(32)
+        db.execute('DELETE FROM admin_sessions WHERE expires_at<=?',(time.time(),))
+        db.execute('INSERT INTO admin_sessions VALUES(?,?)',(digest(token),time.time()+8*3600))
+        return token
+
+    def session_valid(self,token):
+        if not token:return False
+        with self.connect() as db:
+            return db.execute('SELECT 1 FROM admin_sessions WHERE token_hash=? AND expires_at>?',(digest(token),time.time())).fetchone() is not None
+
+    def logout(self,token):
+        with self.connect() as db:db.execute('DELETE FROM admin_sessions WHERE token_hash=?',(digest(token),))
+
+    def change_password(self,current,new):
+        current=password_value(current);new=password_value(new)
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row=db.execute('SELECT * FROM admin_credentials WHERE id=1').fetchone()
+            if not hmac.compare_digest(row['password_hash'],password_hash(current,row['salt'])):
+                raise Problem(401,'현재 비밀번호가 올바르지 않습니다')
+            salt=secrets.token_hex(16)
+            db.execute('UPDATE admin_credentials SET salt=?,password_hash=? WHERE id=1',(salt,password_hash(new,salt)))
+            db.execute('DELETE FROM admin_sessions')
+            db.execute('INSERT INTO audit(at,action) VALUES(?,?)',(time.time(),'admin password changed'))
+            return self.new_session(db)
+
+    def create(self,data):
+        name=text_value(data.get('name'),40,'화장실 이름')
+        stalls=integer(data.get('stalls'),1,100,'운영 칸 수')
+        x=integer(data.get('x',50),3,97,'지도 x');y=integer(data.get('y',50),3,97,'지도 y')
+        with self.connect() as db:
+            tid=db.execute('INSERT INTO toilets(name,stalls,x,y) VALUES(?,?,?,?)',(name,stalls,x,y)).lastrowid
+            db.execute('INSERT INTO audit(at,action) VALUES(?,?)',(time.time(),f'toilet created: {tid}'))
+        if self.demo:self.register({'id':f'demo-{tid}','toilet_id':tid})
+        return {'id':tid,'created':True}
+
+    def delete(self,tid):
+        with self.connect() as db:
+            if not db.execute('UPDATE toilets SET active=0 WHERE id=? AND active=1',(tid,)).rowcount:
+                raise Problem(404,'화장실을 찾을 수 없습니다')
+            db.execute('INSERT INTO audit(at,action) VALUES(?,?)',(time.time(),f'toilet removed: {tid}'))
+        return {'deleted':True}
 
     def register(self, data):
         device = text_value(data.get('id'),64,'장치 ID')
         if not device.isascii() or not all(c.isalnum() or c in '-_' for c in device):
             raise Problem(400, '장치 ID는 영문·숫자·하이픈·밑줄을 사용하세요')
-        toilet = integer(data.get('toilet_id'),1,9999,'화장실 ID')
+        toilet = integer(data.get('toilet_id'),1,2_147_483_647,'화장실 ID')
         token = secrets.token_urlsafe(32)
         try:
             with self.connect() as db:
+                if not db.execute('SELECT 1 FROM toilets WHERE id=? AND active=1',(toilet,)).fetchone():
+                    raise Problem(404,'화장실을 찾을 수 없습니다')
                 db.execute('INSERT INTO devices(id,toilet_id,token_hash) VALUES(?,?,?)',(device,toilet,digest(token)))
                 db.execute('INSERT INTO audit(at,action) VALUES(?,?)',(time.time(),f'device registered: {device}'))
         except sqlite3.IntegrityError:
@@ -108,7 +183,7 @@ class Store:
         return {'id':device,'token':token}
 
     def authenticate_device(self, device, token, db):
-        row = db.execute('SELECT * FROM devices WHERE id=?',(device,)).fetchone()
+        row = db.execute('SELECT d.* FROM devices d JOIN toilets t ON t.id=d.toilet_id WHERE d.id=? AND t.active=1',(device,)).fetchone()
         if not row or not hmac.compare_digest(row['token_hash'],digest(token)):
             raise Problem(401,'장치 인증에 실패했습니다')
         return row
@@ -151,7 +226,7 @@ class Store:
     def snapshot(self, now=None):
         now = time.time() if now is None else now
         with self.connect() as db:
-            rows = db.execute('SELECT t.*,d.id device_id,d.last_seen,d.quality FROM toilets t LEFT JOIN devices d ON d.toilet_id=t.id ORDER BY t.id').fetchall()
+            rows = db.execute('SELECT t.*,d.id device_id,d.last_seen,d.quality FROM toilets t LEFT JOIN devices d ON d.toilet_id=t.id WHERE t.active=1 ORDER BY t.id').fetchall()
             result=[]
             for row in rows:
                 t=dict(row)
@@ -167,7 +242,7 @@ class Store:
                 level = ('busy' if score>=2 else 'moderate' if score>=.8 else 'quiet') if healthy else 'unknown'
                 t.update(level=level,online=online,score=round(score,2),entries=ins,exits=outs,previous_entries=prev)
                 result.append(t)
-            settings={r['key']:r['value'] for r in db.execute('SELECT * FROM settings')}
+            settings={r['key']:r['value'] for r in db.execute("SELECT * FROM settings WHERE key IN ('map','visitor_url')")}
         return {'toilets':result,'updated_at':now,'window_seconds':WINDOW,'demo':self.demo,'settings':settings}
 
     def history(self,toilet_id,now=None):
@@ -186,7 +261,7 @@ class Store:
         stalls=integer(data.get('stalls'),1,100,'운영 칸 수')
         x=integer(data.get('x'),3,97,'지도 x'); y=integer(data.get('y'),3,97,'지도 y')
         with self.connect() as db:
-            if not db.execute('UPDATE toilets SET name=?,stalls=?,x=?,y=? WHERE id=?',(name,stalls,x,y,tid)).rowcount:
+            if not db.execute('UPDATE toilets SET name=?,stalls=?,x=?,y=? WHERE id=? AND active=1',(name,stalls,x,y,tid)).rowcount:
                 raise Problem(404,'화장실을 찾을 수 없습니다')
         return {'saved':True}
 
@@ -195,7 +270,7 @@ class Store:
             raise Problem(403,'시뮬레이션은 --demo에서만 사용할 수 있습니다')
         now=time.time()
         with self.connect() as db:
-            for d in db.execute('SELECT * FROM devices').fetchall():
+            for d in db.execute('SELECT d.* FROM devices d JOIN toilets t ON t.id=d.toilet_id WHERE t.active=1').fetchall():
                 boot='demo-'+secrets.token_hex(8)
                 n={1:2,2:5,3:12}.get(d['toilet_id'],4)
                 # Synthetic histories are labelled as demo in every snapshot.
@@ -212,7 +287,7 @@ class App(BaseHTTPRequestHandler):
         # Do not log request URLs, bodies or authentication headers.
         pass
 
-    def send(self,status,body,kind='application/json; charset=utf-8'):
+    def send(self,status,body,kind='application/json; charset=utf-8',headers=None):
         if isinstance(body,(dict,list)):
             body=json.dumps(body,ensure_ascii=False).encode()
         if isinstance(body,str): body=body.encode()
@@ -223,15 +298,27 @@ class App(BaseHTTPRequestHandler):
         self.send_header('X-Content-Type-Options','nosniff')
         self.send_header('X-Frame-Options','DENY')
         self.send_header('Content-Security-Policy',"default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'")
+        for key,value in (headers or {}).items():self.send_header(key,value)
         self.end_headers();self.wfile.write(body)
 
     def token(self):
         auth=self.headers.get('Authorization','')
         return auth[7:] if auth.startswith('Bearer ') else ''
 
+    def session_token(self):
+        cookie=SimpleCookie()
+        try:cookie.load(self.headers.get('Cookie',''))
+        except CookieError:return ''
+        return cookie['restflow_admin'].value if 'restflow_admin' in cookie else ''
+
+    def session_cookie(self,token,clear=False):
+        value=f'restflow_admin={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={0 if clear else 8*3600}'
+        if self.headers.get('X-Forwarded-Proto')=='https':value+='; Secure'
+        return {'Set-Cookie':value}
+
     def admin(self):
-        if not hmac.compare_digest(self.token(),self.server.admin_token):
-            raise Problem(401,'관리자 토큰을 확인하세요')
+        if not self.server.store.session_valid(self.session_token()):
+            raise Problem(401,'관리자 로그인이 필요합니다')
 
     def qr_url(self):
         with self.server.store.connect() as db:
@@ -251,6 +338,7 @@ class App(BaseHTTPRequestHandler):
     def do_GET(self): self.handle_request('GET')
     def do_POST(self): self.handle_request('POST')
     def do_PUT(self): self.handle_request('PUT')
+    def do_DELETE(self): self.handle_request('DELETE')
 
     def handle_request(self,method):
         try:
@@ -281,10 +369,24 @@ class App(BaseHTTPRequestHandler):
                     types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml'}
                     return self.send(200,f.read_bytes(),types[f.suffix])
                 raise Problem(404,'경로를 찾을 수 없습니다')
-            data=self.body()
+            data={} if method=='DELETE' else self.body()
+            if method=='POST' and p=='/api/login':
+                session=store.login(data.get('password'))
+                return self.send(200,{'authenticated':True},headers=self.session_cookie(session))
             if method=='POST' and p in ('/api/events','/api/heartbeat'):
                 return self.send(200,store.ingest(data,self.token(),p.endswith('heartbeat')))
             self.admin()
+            if method=='POST' and p=='/api/logout':
+                store.logout(self.session_token())
+                return self.send(200,{'logged_out':True},headers=self.session_cookie('',True))
+            if method=='PUT' and p=='/api/password':
+                session=store.change_password(data.get('current_password'),data.get('new_password'))
+                return self.send(200,{'changed':True},headers=self.session_cookie(session))
+            if method=='POST' and p=='/api/toilets':return self.send(201,store.create(data))
+            if method=='DELETE' and p.startswith('/api/toilets/'):
+                try:tid=int(p.rsplit('/',1)[1])
+                except ValueError:raise Problem(400,'잘못된 화장실 ID')
+                return self.send(200,store.delete(tid))
             if method=='PUT' and p=='/api/visitor-url':
                 url=visitor_url(data.get('url'))
                 with store.connect() as db:
@@ -297,9 +399,9 @@ class App(BaseHTTPRequestHandler):
                 except ValueError: raise Problem(400,'잘못된 화장실 ID')
                 return self.send(200,store.update(tid,data))
             if method=='POST' and p=='/api/reset':
-                tid=integer(data.get('toilet_id'),1,9999,'toilet_id')
+                tid=integer(data.get('toilet_id'),1,2_147_483_647,'toilet_id')
                 with store.connect() as db:
-                    if not db.execute('UPDATE toilets SET reset_at=? WHERE id=?',(time.time(),tid)).rowcount:
+                    if not db.execute('UPDATE toilets SET reset_at=? WHERE id=? AND active=1',(time.time(),tid)).rowcount:
                         raise Problem(404,'화장실을 찾을 수 없습니다')
                     db.execute('INSERT INTO audit(at,action) VALUES(?,?)',(time.time(),f'window reset: {tid}'))
                 return self.send(200,{'reset':True})
@@ -322,9 +424,9 @@ class App(BaseHTTPRequestHandler):
             self.send(500,{'error':'서버 오류가 발생했습니다. 서버 설정을 확인하세요'})
 
 
-def make_server(host,port,store,token,public_url=''):
+def make_server(host,port,store,public_url=''):
     server=ThreadingHTTPServer((host,port),App)
-    server.store,server.admin_token,server.public_url=store,token,public_url
+    server.store,server.public_url=store,public_url
     return server
 
 
@@ -332,21 +434,13 @@ def main():
     p=argparse.ArgumentParser();p.add_argument('--host',default='127.0.0.1');p.add_argument('--port',type=int,default=8000)
     p.add_argument('--demo',action='store_true');p.add_argument('--db');args=p.parse_args()
     runtime=ROOT/'.runtime';runtime.mkdir(exist_ok=True)
-    token=os.environ.get('ADMIN_TOKEN')
-    if not token:
-        f=runtime/'admin-token'
-        if not f.exists():
-            fd=os.open(f,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
-            with os.fdopen(fd,'w') as out:out.write(secrets.token_urlsafe(32))
-        token=f.read_text().strip()
-    if len(token)<16:raise SystemExit('ADMIN_TOKEN은 16자 이상이어야 합니다')
     url=os.environ.get('PUBLIC_URL','').rstrip('/')
     if url and (urlparse(url).scheme not in ('http','https') or not urlparse(url).netloc):
         raise SystemExit('PUBLIC_URL은 실제 접속 가능한 http(s) URL이어야 합니다')
     store=Store(args.db or runtime/('demo.sqlite3' if args.demo else 'live.sqlite3'),args.demo)
-    server=make_server(args.host,args.port,store,token,url)
+    server=make_server(args.host,args.port,store,url)
     print(f'RestFlow listening on port {server.server_port}; mode={"DEMO" if args.demo else "LIVE"}',flush=True)
-    print('Admin token: ADMIN_TOKEN 환경변수 또는 .runtime/admin-token 파일을 사용하세요 (값은 출력하지 않습니다).',flush=True)
+    print('관리자: /admin · 최초 비밀번호 1234 · 로그인 후 비밀번호 변경 가능',flush=True)
     try:server.serve_forever()
     except KeyboardInterrupt:pass
     finally:server.server_close()

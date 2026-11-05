@@ -95,18 +95,54 @@ class SystemTests(unittest.TestCase):
         for value in (self.db.snapshot(),self.db.all_devices()):
             self.assertNotIn(self.token,json.dumps(value));self.assertNotIn('token_hash',json.dumps(value))
 
+class FacilityLifecycleTests(unittest.TestCase):
+    def test_delete_all_stays_empty_after_restart_and_can_add(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'state.sqlite3';db=Store(path,True)
+            for t in db.snapshot()['toilets']:db.delete(t['id'])
+            reloaded=Store(path,True)
+            self.assertEqual(reloaded.snapshot()['toilets'],[])
+            new=reloaded.create({'name':'새 출입구','stalls':5})
+            self.assertGreater(new['id'],3)
+            self.assertEqual(len(reloaded.snapshot()['toilets']),1)
+            self.assertEqual(len(reloaded.all_devices()),1)
+    def test_more_than_three_facilities_and_preserved_records(self):
+        with tempfile.TemporaryDirectory() as folder:
+            db=Store(Path(folder)/'state.sqlite3',True)
+            for i in range(30):db.create({'name':f'화장실 {i+4}','stalls':4})
+            self.assertEqual(len(db.snapshot()['toilets']),33)
+            with db.connect() as conn:before=conn.execute('SELECT count(*) FROM events').fetchone()[0]
+            db.delete(1)
+            with db.connect() as conn:self.assertEqual(conn.execute('SELECT count(*) FROM events').fetchone()[0],before)
+    def test_existing_database_schema_is_migrated_without_losing_settings(self):
+        import sqlite3
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'old.sqlite3'
+            with sqlite3.connect(path) as conn:
+                conn.executescript("CREATE TABLE toilets(id INTEGER PRIMARY KEY,name TEXT NOT NULL,stalls INTEGER NOT NULL,x INTEGER NOT NULL,y INTEGER NOT NULL,reset_at REAL NOT NULL DEFAULT 0);INSERT INTO toilets VALUES(9,'기존 시설',7,40,50,0);CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);INSERT INTO settings VALUES('visitor_url','https://old.example.org');")
+            db=Store(path)
+            self.assertEqual(db.snapshot()['toilets'][0]['name'],'기존 시설')
+            self.assertEqual(db.snapshot()['settings']['visitor_url'],'https://old.example.org')
+            self.assertTrue(db.session_valid(db.login('1234')))
+
 class HTTPTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.temp=tempfile.TemporaryDirectory();cls.db=Store(Path(cls.temp.name)/'http.sqlite3')
-        cls.server=make_server('127.0.0.1',0,cls.db,'integration-test-admin-token','https://event.example.org')
+        cls.server=make_server('127.0.0.1',0,cls.db,'https://event.example.org')
         cls.thread=threading.Thread(target=cls.server.serve_forever,daemon=True);cls.thread.start()
         cls.base=f'http://127.0.0.1:{cls.server.server_port}'
     @classmethod
     def tearDownClass(cls):cls.server.shutdown();cls.server.server_close();cls.thread.join();cls.temp.cleanup()
-    def request(self,path,method='GET',body=None,token=None):
+    def setUp(self):
+        status,body,headers=self.request('/api/login','POST',{'password':'1234'})
+        self.assertEqual(status,200)
+        self.cookie=headers['Set-Cookie'].split(';',1)[0]
+    def request(self,path,method='GET',body=None,token=None,cookie=None):
         headers={}
-        if token:headers['Authorization']='Bearer '+token
+        if token=='integration-test-admin-token':headers['Cookie']=self.cookie
+        elif token:headers['Authorization']='Bearer '+token
+        if cookie:headers['Cookie']=cookie
         if body is not None:headers['Content-Type']='application/json'
         req=Request(self.base+path,data=json.dumps(body).encode() if body is not None else None,headers=headers,method=method)
         try:
@@ -160,6 +196,52 @@ class HTTPTests(unittest.TestCase):
         for target in ('javascript:alert(1)','file:///tmp/secret','https://user:password@example.org','https://','http://host:bad','https://example.org/has space','https://example.org/\nsecret'):
             with self.subTest(target=target):
                 self.assertEqual(self.request('/api/visitor-url','PUT',{'url':target},'integration-test-admin-token')[0],400)
+    def test_password_login_and_cookie_flags(self):
+        status,body,headers=self.request('/api/login','POST',{'password':'1234'})
+        self.assertEqual(status,200)
+        self.assertIn('HttpOnly',headers['Set-Cookie']);self.assertIn('SameSite=Strict',headers['Set-Cookie'])
+        self.assertNotIn('1234',body.decode())
+        self.assertEqual(self.request('/api/login','POST',{'password':'wrong'})[0],401)
+        self.assertEqual(self.request('/api/admin',token='old-admin-token-is-not-a-session')[0],401)
+    def test_logout_revokes_session(self):
+        self.assertEqual(self.request('/api/logout','POST',{},cookie=self.cookie)[0],200)
+        self.assertEqual(self.request('/api/admin',cookie=self.cookie)[0],401)
+    def test_password_change_persists_and_revokes_other_sessions(self):
+        status,body,headers=self.request('/api/login','POST',{'password':'1234'})
+        other=headers['Set-Cookie'].split(';',1)[0]
+        try:
+            status,body,headers=self.request('/api/password','PUT',{'current_password':'1234','new_password':'new-pass-5678'},cookie=self.cookie)
+            self.assertEqual(status,200)
+            new_cookie=headers['Set-Cookie'].split(';',1)[0]
+            self.assertEqual(self.request('/api/admin',cookie=other)[0],401)
+            self.assertEqual(self.request('/api/admin',cookie=self.cookie)[0],401)
+            self.assertEqual(self.request('/api/admin',cookie=new_cookie)[0],200)
+            self.assertEqual(self.request('/api/login','POST',{'password':'1234'})[0],401)
+            restored=Store(self.db.path)
+            self.assertTrue(restored.session_valid(restored.login('new-pass-5678')))
+            public=self.request('/api/status')[1].decode()
+            self.assertNotIn('new-pass-5678',public);self.assertNotIn('password_hash',public);self.assertNotIn('salt',public)
+        finally:self.db.change_password('new-pass-5678','1234')
+    def test_password_change_validates_current_password_and_length(self):
+        for data in ({'current_password':'wrong','new_password':'5678'},{'current_password':'1234','new_password':'abc'}):
+            self.assertIn(self.request('/api/password','PUT',data,cookie=self.cookie)[0],(400,401))
+        self.assertEqual(self.request('/api/admin',cookie=self.cookie)[0],200)
+    def test_toilet_add_delete_and_revoked_device(self):
+        status,body,_=self.request('/api/toilets','POST',{'name':'새 화장실','stalls':6},cookie=self.cookie)
+        self.assertEqual(status,201);tid=json.loads(body)['id']
+        status,body,_=self.request('/api/devices','POST',{'id':'new-physical-device','toilet_id':tid},cookie=self.cookie)
+        self.assertEqual(status,201);device_token=json.loads(body)['token']
+        heartbeat={'device_id':'new-physical-device','quality':'good'}
+        self.assertEqual(self.request('/api/heartbeat','POST',heartbeat,device_token)[0],200)
+        self.assertEqual(self.request(f'/api/toilets/{tid}','DELETE',cookie=self.cookie)[0],200)
+        self.assertNotIn(tid,[r['id'] for r in self.db.snapshot()['toilets']])
+        self.assertEqual(self.request('/api/heartbeat','POST',heartbeat,device_token)[0],401)
+        self.assertEqual(self.request(f'/api/toilets/{tid}','DELETE',cookie=self.cookie)[0],404)
+    def test_toilet_creation_requires_login(self):
+        self.assertEqual(self.request('/api/toilets','POST',{'name':'No','stalls':4})[0],401)
+    def test_expired_session_is_rejected(self):
+        with self.db.connect() as db:db.execute('UPDATE admin_sessions SET expires_at=0')
+        self.assertEqual(self.request('/api/admin',cookie=self.cookie)[0],401)
     def test_traversal_not_served(self):self.assertEqual(self.request('/../server.py')[0],404)
 
 if __name__=='__main__':unittest.main()

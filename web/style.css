@@ -10,3 +10,9 @@
 #qr-result{margin-top:18px;text-align:center;border:1px solid var(--line);border-radius:10px;padding:15px}#qr-image{width:180px;height:180px;background:white}
 #qr-destination{font-size:11px;overflow-wrap:anywhere;color:var(--muted)}.qr-downloads{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}.qr-downloads a{display:inline-block}
 @media(max-width:520px){#map-editor{align-items:stretch;flex-direction:column;padding:12px}.position-actions button{flex:1}.qr-downloads a{font-size:11px}}
+
+fieldset{border:0;margin:0;padding:0;min-width:0}fieldset:disabled{opacity:.5}
+.inline-form{display:grid;grid-template-columns:minmax(180px,2fr) minmax(90px,1fr) auto;gap:14px;align-items:end}.inline-form button{margin-bottom:12px}
+.password-grid{display:grid;grid-template-columns:repeat(3,minmax(100px,1fr)) auto;gap:12px;align-items:end}.password-grid button{margin-bottom:12px}
+@media(max-width:850px){.password-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:520px){.inline-form,.password-grid{grid-template-columns:1fr}.inline-form label,.password-grid label{margin:4px 0}.inline-form button,.password-grid button{margin:8px 0}}

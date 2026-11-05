@@ -12,7 +12,7 @@ from server import Store,make_server
 root=Path(__file__).resolve().parents[1]
 shots=root/'docs'/'screenshots';shots.mkdir(exist_ok=True)
 with tempfile.TemporaryDirectory() as folder:
-    server=make_server('127.0.0.1',0,Store(Path(folder)/'demo.sqlite3',True),'browser-smoke-test-token')
+    server=make_server('127.0.0.1',0,Store(Path(folder)/'demo.sqlite3',True))
     worker=threading.Thread(target=server.serve_forever,daemon=True);worker.start()
     try:
         with sync_playwright() as p:
@@ -22,6 +22,7 @@ with tempfile.TemporaryDirectory() as folder:
             url=f'http://127.0.0.1:{server.server_port}'
             page.goto(url);page.wait_for_selector('.toilet-card')
             assert page.locator('.toilet-card').count()==3
+            assert not page.locator('#admin-link').is_visible()
             assert page.locator('#banner').is_visible()
             assert page.locator('.status.quiet').count()==1
             assert page.locator('.status.moderate').count()==1
@@ -31,7 +32,7 @@ with tempfile.TemporaryDirectory() as folder:
             page.set_viewport_size({'width':390,'height':844});page.screenshot(path=str(shots/'visitor-mobile.png'),full_page=True)
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
             page.set_viewport_size({'width':1440,'height':1100});page.goto(url+'/admin')
-            page.locator('#admin-token').fill('browser-smoke-test-token');page.locator('#login-form button').click()
+            page.locator('#admin-password').fill('1234');page.locator('#login-form button').click()
             page.wait_for_selector('#admin-panel:not([hidden])')
             def drag_marker(dx,dy):
                 marker=page.locator('.marker[data-id="1"]');marker.scroll_into_view_if_needed();box=marker.bounding_box()
@@ -67,14 +68,26 @@ with tempfile.TemporaryDirectory() as folder:
             page.screenshot(path=str(shots/'admin-desktop.png'),full_page=True)
             page.locator('#map-upload').set_input_files({'name':'tiny.png','mimeType':'image/png','buffer':__import__('base64').b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWQAAAABJRU5ErkJggg==')})
             expect(page.locator('#event-map')).to_have_attribute('src',re.compile(r'^data:image/png'))
-            page.locator('#logout').click();assert page.locator('#login-panel').is_visible()
+            # Facilities can be added and deleted without a fixed count.
+            page.locator('#new-toilet-name').fill('서문 화장실');page.locator('#new-toilet-stalls').fill('5');page.locator('#new-toilet-form button').click()
+            expect(page.locator('.toilet-card')).to_have_count(4)
+            expect(page.locator('#toilet-name')).to_have_value('서문 화장실')
+            page.once('dialog',lambda dialog:dialog.accept());page.locator('#delete-toilet').click()
+            expect(page.locator('.toilet-card')).to_have_count(3)
+            page.locator('#current-password').fill('1234');page.locator('#new-password').fill('changed-5678');page.locator('#confirm-password').fill('changed-5678')
+            page.locator('#password-form button').click();expect(page.locator('#notice')).to_contain_text('비밀번호를 변경했습니다')
+            page.reload();page.wait_for_selector('#admin-panel:not([hidden])') # cookie survives reload
+            page.locator('#logout').click();expect(page.locator('#login-panel')).to_be_visible()
+            page.locator('#admin-password').fill('1234');page.locator('#login-form button').click();expect(page.locator('#notice')).to_contain_text('올바르지')
+            page.locator('#admin-password').fill('changed-5678');page.locator('#login-form button').click();page.wait_for_selector('#admin-panel:not([hidden])')
+            page.locator('#logout').click();expect(page.locator('#login-panel')).to_be_visible()
             page.goto(url);page.wait_for_selector('.toilet-card')
             page.route('**/api/status',lambda route:route.abort())
             page.locator('#refresh').click();expect(page.locator('.status').first).to_have_text('갱신 실패')
             # Touch gestures use Chromium's real input pipeline on a mobile viewport.
             context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True)
             mobile=context.new_page();mobile.on('pageerror',lambda err:errors.append(str(err)))
-            mobile.goto(url+'/admin');mobile.locator('#admin-token').fill('browser-smoke-test-token');mobile.locator('#login-form button').click()
+            mobile.goto(url+'/admin');mobile.locator('#admin-password').fill('changed-5678');mobile.locator('#login-form button').click()
             mobile.wait_for_selector('#admin-panel:not([hidden])');mobile.locator('.marker[data-id="1"]').scroll_into_view_if_needed()
             expect(mobile.locator('#map-x')).to_have_value(str(saved[0]))
             marker=mobile.locator('.marker[data-id="1"]').bounding_box();x=marker['x']+marker['width']/2;y=marker['y']+marker['height']/2
@@ -87,9 +100,17 @@ with tempfile.TemporaryDirectory() as folder:
             mobile.locator('#save-position').click();expect(mobile.locator('#save-position')).to_be_disabled()
             assert server.store.snapshot()['toilets'][0]['x']==touch_x
             assert mobile.evaluate('document.documentElement.scrollWidth <= innerWidth')
+            # Deleting every facility leaves a usable empty state on mobile.
+            for remaining in (2,1,0):
+                mobile.once('dialog',lambda dialog:dialog.accept());mobile.locator('#delete-toilet').click()
+                expect(mobile.locator('.toilet-card')).to_have_count(remaining)
+            expect(mobile.locator('#toilet-name')).to_be_disabled()
+            mobile.locator('#new-toilet-name').fill('다시 추가한 화장실');mobile.locator('#new-toilet-form button').click()
+            expect(mobile.locator('.toilet-card')).to_have_count(1)
+            expect(mobile.locator('#toilet-name')).to_have_value('다시 추가한 화장실')
             context.close()
             assert not errors,errors
             browser.close()
-        print('Browser PASS: visitor, selection, mobile overflow, admin login/save/logout, drag/undo/keyboard/cancel/polling, touch drag, map upload, QR PNG/SVG downloads, server failure; screenshots saved.')
+        print('Browser PASS: visitor, selection, mobile overflow, password login/change/logout, facility add/delete/empty/re-add, drag/undo/keyboard/cancel/polling, touch drag, map upload, QR PNG/SVG downloads, server failure; screenshots saved.')
     finally:
         server.shutdown();server.server_close();worker.join()

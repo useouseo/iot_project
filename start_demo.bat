@@ -16,7 +16,7 @@ if errorlevel 1 goto failed
 echo.
 echo Open http://localhost:8000 in your browser after the server starts.
 echo Admin page: http://localhost:8000/admin
-echo Admin token is stored locally in .runtime\admin-token after first start.
+echo Initial admin password: 1234. You can change it after login.
 echo Keep this window open. Press Ctrl+C to stop the server.
 echo.
 .venv\Scripts\python.exe server.py --demo %*
