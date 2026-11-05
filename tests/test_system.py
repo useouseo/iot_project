@@ -11,7 +11,7 @@ import unittest
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from server import Store, Problem, make_server
+from server import Store, Problem, make_server, visitor_url
 
 class SystemTests(unittest.TestCase):
     def setUp(self):
@@ -147,6 +147,19 @@ class HTTPTests(unittest.TestCase):
     def test_qr_generated_locally(self):
         status,body,headers=self.request('/api/qr.svg');self.assertEqual(status,200)
         self.assertIn(b'<svg',body);self.assertIn('image/svg+xml',headers['Content-Type'])
+    def test_visitor_url_requires_admin(self):
+        self.assertEqual(self.request('/api/visitor-url','PUT',{'url':'https://event.example.org'})[0],401)
+    def test_visitor_url_saved_and_used_for_qr(self):
+        target='https://festival.example.org/guide?event=4'
+        status,body,_=self.request('/api/visitor-url','PUT',{'url':target},'integration-test-admin-token')
+        self.assertEqual(status,200)
+        self.assertEqual(json.loads(self.request('/api/admin',token='integration-test-admin-token')[1])['visitor_url'],target)
+        with self.db.connect() as db:self.assertEqual(db.execute("SELECT value FROM settings WHERE key='visitor_url'").fetchone()[0],target)
+        status,svg,_=self.request('/api/qr.svg');self.assertEqual(status,200);self.assertIn(b'<svg',svg)
+    def test_visitor_url_rejects_invalid_or_embedded_credentials(self):
+        for target in ('javascript:alert(1)','file:///tmp/secret','https://user:password@example.org','https://','http://host:bad','https://example.org/has space','https://example.org/\nsecret'):
+            with self.subTest(target=target):
+                self.assertEqual(self.request('/api/visitor-url','PUT',{'url':target},'integration-test-admin-token')[0],400)
     def test_traversal_not_served(self):self.assertEqual(self.request('/../server.py')[0],404)
 
 if __name__=='__main__':unittest.main()

@@ -3,6 +3,7 @@ const $ = id => document.getElementById(id);
 const adminPage = location.pathname === '/admin';
 const labels = {quiet:'여유',moderate:'보통',busy:'혼잡',unknown:'확인 필요'};
 let token = '', snapshot = null, selected = 1, dirty = false, refreshing = false;
+let positionDraft = null, drag = null, suppressMapClickUntil = 0;
 const elem = (tag, text, cls) => { const e=document.createElement(tag); if(text!==undefined)e.textContent=text; if(cls)e.className=cls; return e; };
 const localTime = at => at ? new Date(at*1000).toLocaleTimeString('ko-KR',{timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '수신 기록 없음';
 function notice(message, error=false) { $('notice').hidden=false; $('notice').textContent=message; $('notice').className=error?'error':''; }
@@ -12,14 +13,59 @@ async function api(path,method='GET',body) {
 }
 function current() { return snapshot?.toilets.find(t=>t.id===selected); }
 function select(id, scroll=false) {
-  if(dirty && id!==selected && !confirm('저장하지 않은 설정을 버리고 다른 화장실을 선택할까요?'))return;
-  if(id!==selected) { selected=id;dirty=false; }
-  render(); fillForm();
+  if(dirty && id!==selected && !confirm('저장하지 않은 설정을 버리고 다른 화장실을 선택할까요?')) {
+    $('selected-toilet').value=selected; return false;
+  }
+  if(id!==selected) { selected=id;dirty=false;positionDraft=null; }
+  render(); if(!dirty)fillForm();
   if(adminPage&&token)loadHistory();
   if(scroll)$('cards').querySelector(`[data-id="${id}"]`)?.scrollIntoView({block:'nearest',behavior:'smooth'});
+  return true;
+}
+function mapPosition(t) { return positionDraft?.id===t.id ? positionDraft : t; }
+function formChanged() {
+  const t=current();return t && ($('toilet-name').value!==t.name || Number($('stalls').value)!==t.stalls || Number($('map-x').value)!==t.x || Number($('map-y').value)!==t.y);
+}
+function updatePlacement() {
+  const t=current();if(!t)return;
+  const changed=positionDraft?.id===t.id && (positionDraft.x!==t.x || positionDraft.y!==t.y);
+  $('placement-title').textContent=`${t.name} · 위치 설정`;
+  $('placement-state').textContent=changed?'위치 변경됨 · 위치 저장을 누르면 방문객 지도에도 반영됩니다.':'마커를 드래그하거나 지도를 클릭하세요. 마커에서 방향키로도 이동할 수 있습니다.';
+  $('save-position').disabled=!changed; $('undo-position').disabled=!changed;
+}
+function setPosition(x,y) {
+  const t=current();if(!t)return;
+  x=Math.min(97,Math.max(3,Math.round(x)));y=Math.min(97,Math.max(3,Math.round(y)));
+  positionDraft={id:selected,x,y};$('map-x').value=x;$('map-y').value=y;dirty=Boolean(formChanged());
+  const mark=$('markers').querySelector(`[data-id="${selected}"]`);
+  if(mark){mark.style.left=`${x}%`;mark.style.top=`${y}%`;}
+  updatePlacement();
+}
+function beginDrag(event,id) {
+  if(!adminPage||!token||!event.isPrimary||event.button!==0)return;
+  event.preventDefault();event.stopPropagation();
+  if(!select(id)){suppressMapClickUntil=performance.now()+400;return;}
+  const surface=$('map-surface'),rect=surface.getBoundingClientRect(),pos=mapPosition(current());
+  drag={pointer:event.pointerId,id,startX:event.clientX,startY:event.clientY,
+    offsetX:event.clientX-rect.left-pos.x/100*rect.width,offsetY:event.clientY-rect.top-pos.y/100*rect.height,
+    previous:positionDraft?{...positionDraft}:null,previousDirty:dirty,moved:false};
+  surface.setPointerCapture(event.pointerId);
+}
+function finishDrag(event,cancelled=false) {
+  if(!drag||event.pointerId!==drag.pointer)return;
+  const finished=drag;drag=null;
+  const surface=$('map-surface');
+  if(surface.hasPointerCapture(event.pointerId))surface.releasePointerCapture(event.pointerId);
+  if(cancelled){positionDraft=finished.previous;dirty=finished.previousDirty;render();if(!dirty)fillForm();else{
+    const pos=mapPosition(current());$('map-x').value=pos.x;$('map-y').value=pos.y;
+  }}
+  $('markers').querySelector('.dragging')?.classList.remove('dragging');
+  suppressMapClickUntil=performance.now()+400;
+  if(finished.moved&&!cancelled)notice('마커를 옮겼습니다. 지도 아래의 위치 저장을 눌러주세요.');
+  updatePlacement();
 }
 function render() {
-  if(!snapshot)return;
+  if(!snapshot||drag)return;
   $('banner').hidden=!snapshot.demo;
   $('banner').textContent='시연 모드 · 모든 통행량과 장치 상태는 시뮬레이션 데이터입니다. 실제 현장 측정값이 아닙니다.';
   $('event-map').src=snapshot.settings.map||'/map.svg';
@@ -32,10 +78,22 @@ function render() {
   $('updated').textContent=`${localTime(snapshot.updated_at)} KST 갱신`;
   for(const t of snapshot.toilets) {
     const mark=elem('button',undefined,`marker ${t.level}${t.id===selected?' selected':''}`);
-    mark.style.left=`${t.x}%`;mark.style.top=`${t.y}%`;
+    const pos=mapPosition(t);mark.style.left=`${pos.x}%`;mark.style.top=`${pos.y}%`;mark.dataset.id=t.id;
     mark.append(elem('span',String.fromCharCode(64+t.id)),elem('small',labels[t.level]));
     mark.setAttribute('aria-label',`${t.name}, ${labels[t.level]}`);mark.setAttribute('aria-pressed',String(t.id===selected));
-    mark.addEventListener('click',e=>{e.stopPropagation();select(t.id,true);});$('markers').append(mark);
+    mark.addEventListener('click',e=>{e.stopPropagation();if(performance.now()<suppressMapClickUntil)return;select(t.id,true);});
+    if(adminPage&&token){
+      mark.title='드래그하여 위치 이동 · 방향키 미세 조정';
+      mark.setAttribute('aria-describedby','placement-state');
+      mark.addEventListener('pointerdown',e=>beginDrag(e,t.id));
+      mark.addEventListener('keydown',e=>{
+        const direction={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]}[e.key];
+        if(!direction)return;e.preventDefault();if(!select(t.id))return;
+        const pos=mapPosition(current()),step=e.shiftKey?5:1;setPosition(pos.x+direction[0]*step,pos.y+direction[1]*step);
+        $('markers').querySelector(`[data-id="${t.id}"]`)?.focus();
+      });
+    }
+    $('markers').append(mark);
     const card=elem('button',undefined,`toilet-card${t.id===selected?' selected':''}`);card.dataset.id=t.id;
     card.setAttribute('aria-pressed',String(t.id===selected));
     const top=elem('div',undefined,'card-top'), name=elem('div',undefined,'card-name');
@@ -45,8 +103,10 @@ function render() {
     bottom.append(elem('span',t.online?(t.quality==='good'?'● 정상 수신':'● 측정 신뢰도 확인 필요'):'○ 수신 대기 / 연결 끊김'),elem('span',`마지막 수신 ${localTime(t.last_seen)}`));
     card.append(top,bottom);card.addEventListener('click',()=>select(t.id));$('cards').append(card);
   }
+  $('map-editor').hidden=!(adminPage&&token);
+  $('map-surface').classList.toggle('map-editable',Boolean(adminPage&&token));
   if(adminPage&&token) {
-    const sel=$('selected-toilet'); const previous=sel.value;
+    const sel=$('selected-toilet');
     sel.replaceChildren(...snapshot.toilets.map(t=>{const o=elem('option',t.name);o.value=t.id;return o;}));sel.value=String(selected);
     $('simulate').hidden=!snapshot.demo;
     $('device-status').replaceChildren();
@@ -56,11 +116,12 @@ function render() {
       $('device-status').append(line);
     }
     if(!dirty)fillForm();
+    updatePlacement();
   }
 }
 function fillForm(){const t=current();if(!t)return;$('selected-toilet').value=t.id;$('toilet-name').value=t.name;$('stalls').value=t.stalls;$('map-x').value=t.x;$('map-y').value=t.y;}
 async function refresh(){
-  if(refreshing)return;refreshing=true;
+  if(refreshing||drag)return;refreshing=true;
   try {snapshot=await api('/api/status');render();if(adminPage&&token)await loadHistory();}
   catch(e){$('connection').textContent='서버 연결 확인 필요';$('updated').textContent='갱신 실패 · 이전 상태를 사용하지 마세요';notice(e.message,true);
     document.querySelectorAll('.status').forEach(el=>{el.className='status unknown';el.textContent='갱신 실패';});
@@ -81,24 +142,40 @@ $('visitor-link').classList.toggle('active',!adminPage);$('admin-link').classLis
 if(adminPage){$('title').textContent='현장의 흐름을, 한눈에.';$('subtitle').textContent='화장실 위치와 운영 정보, 센서 연결 상태를 관리하세요.';$('login-panel').hidden=false;$('workspace').hidden=true;}
 $('login-form').addEventListener('submit',e=>{e.preventDefault();action(async()=>{
   token=$('admin-token').value.trim();
-  try{await api('/api/admin');}catch(err){token='';throw err;}
+  try{const settings=await api('/api/admin');$('visitor-url').value=settings.visitor_url||location.origin;updateQrHint();}catch(err){token='';throw err;}
   $('admin-token').value='';$('login-panel').hidden=true;$('workspace').hidden=false;$('admin-panel').hidden=false;
   notice('관리자 인증이 완료되었습니다.');await refresh();fillForm();
 });});
-$('logout').addEventListener('click',()=>{token='';$('admin-panel').hidden=true;$('workspace').hidden=true;$('login-panel').hidden=false;$('device-token').value='';$('device-result').hidden=true;notice('로그아웃했습니다.');});
+$('logout').addEventListener('click',()=>{if(drag)finishDrag({pointerId:drag.pointer},true);token='';dirty=false;positionDraft=null;$('map-editor').hidden=true;$('map-surface').classList.remove('map-editable');$('admin-panel').hidden=true;$('workspace').hidden=true;$('login-panel').hidden=false;$('device-token').value='';$('device-result').hidden=true;notice('로그아웃했습니다.');});
 $('refresh').addEventListener('click',refresh);
 $('selected-toilet').addEventListener('change',()=>select(Number($('selected-toilet').value)));
-$('toilet-form').addEventListener('input',()=>dirty=true);
-$('map-surface').addEventListener('click',e=>{
-  if(!adminPage||!token)return;
+$('toilet-form').addEventListener('input',e=>{
+  dirty=Boolean(formChanged());
+  if(['map-x','map-y'].includes(e.target.id) && $('map-x').validity.valid && $('map-y').validity.valid)setPosition(Number($('map-x').value),Number($('map-y').value));
+});
+$('map-surface').addEventListener('pointermove',e=>{
+  if(!drag||e.pointerId!==drag.pointer)return;
+  if(!drag.moved&&Math.hypot(e.clientX-drag.startX,e.clientY-drag.startY)<4)return;
+  drag.moved=true;e.preventDefault();
+  $('markers').querySelector(`[data-id="${drag.id}"]`)?.classList.add('dragging');
   const rect=$('map-surface').getBoundingClientRect();
-  $('map-x').value=Math.min(97,Math.max(3,Math.round((e.clientX-rect.left)/rect.width*100)));
-  $('map-y').value=Math.min(97,Math.max(3,Math.round((e.clientY-rect.top)/rect.height*100)));dirty=true;
-  notice('좌표를 입력했습니다. 설정 저장을 누르면 위치가 반영됩니다.');
+  setPosition((e.clientX-drag.offsetX-rect.left)/rect.width*100,(e.clientY-drag.offsetY-rect.top)/rect.height*100);
+});
+$('map-surface').addEventListener('pointerup',e=>finishDrag(e));
+$('map-surface').addEventListener('pointercancel',e=>finishDrag(e,true));
+$('map-surface').addEventListener('lostpointercapture',e=>{if(drag)finishDrag(e,true);});
+$('map-surface').addEventListener('click',e=>{
+  if(!adminPage||!token||performance.now()<suppressMapClickUntil)return;
+  const rect=$('map-surface').getBoundingClientRect();
+  setPosition((e.clientX-rect.left)/rect.width*100,(e.clientY-rect.top)/rect.height*100);
+});
+$('save-position').addEventListener('click',()=>$('toilet-form').requestSubmit());
+$('undo-position').addEventListener('click',()=>{
+  const t=current();if(!t)return;positionDraft=null;$('map-x').value=t.x;$('map-y').value=t.y;dirty=Boolean(formChanged());render();
 });
 $('toilet-form').addEventListener('submit',e=>{e.preventDefault();action(async()=>{
   await api(`/api/toilets/${selected}`,'PUT',{name:$('toilet-name').value,stalls:Number($('stalls').value),x:Number($('map-x').value),y:Number($('map-y').value)});
-  dirty=false;notice('화장실 설정을 저장했습니다.');await refresh();
+  dirty=false;positionDraft=null;notice('화장실 설정과 지도 위치를 저장했습니다.');await refresh();
 });});
 $('device-form').addEventListener('submit',e=>{e.preventDefault();action(async()=>{
   const data=await api('/api/devices','POST',{id:$('device-id').value,toilet_id:selected});
@@ -113,9 +190,27 @@ $('map-upload').addEventListener('change',()=>action(async()=>{
 }));
 $('reset').addEventListener('click',()=>{if(confirm('선택한 화장실의 현재 혼잡도 계산 구간을 초기화할까요? 원본 통행 기록은 유지됩니다.'))action(async()=>{await api('/api/reset','POST',{toilet_id:selected});notice('계산 구간을 초기화했습니다.');await refresh();});});
 $('simulate').addEventListener('click',()=>action(async()=>{await api('/api/demo','POST',{});notice('시연 통행 데이터를 추가했습니다.');await refresh();}));
-$('qr-button').addEventListener('click',()=>action(async()=>{
-  const response=await fetch('/api/qr.svg');if(!response.ok){const error=await response.json();throw new Error(error.error);}
-  // CSP permits same-origin SVG via a data URI, avoiding an external QR service.
-  const reader=new FileReader();reader.onload=()=>{$('qr-image').src=reader.result;$('qr-image').hidden=false;};reader.readAsDataURL(await response.blob());
-}));
+function updateQrHint() {
+  let local=false;
+  try{local=['localhost','127.0.0.1','[::1]'].includes(new URL($('visitor-url').value).hostname);}catch{}
+  $('qr-url-hint').textContent=local?'이 주소는 현재 PC에서만 접속할 수 있습니다. 휴대폰용으로는 PC의 내부 IP 주소 또는 공개 서버 주소를 입력하세요.':'방문객 휴대폰에서도 접속 가능한 주소를 입력하세요. 주소를 입력하는 것만으로 서버가 공개되지는 않습니다.';
+}
+function dataUrl(blob) {
+  return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('QR 이미지를 읽지 못했습니다'));reader.readAsDataURL(blob);});
+}
+$('visitor-url').addEventListener('input',()=>{updateQrHint();$('qr-result').hidden=true;});
+$('qr-form').addEventListener('submit',e=>{e.preventDefault();action(async()=>{
+  const button=$('qr-button');button.disabled=true;$('qr-result').hidden=true;
+  try{
+    const saved=await api('/api/visitor-url','PUT',{url:$('visitor-url').value.trim()});
+    const response=await fetch('/api/qr.svg',{signal:AbortSignal.timeout(8000)});
+    if(!response.ok){const error=await response.json();throw new Error(error.error);}
+    const svg=await dataUrl(await response.blob()),image=new Image();image.src=svg;await image.decode();
+    const canvas=document.createElement('canvas');canvas.width=canvas.height=1024;
+    const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,1024,1024);ctx.drawImage(image,0,0,1024,1024);
+    $('qr-image').src=svg;$('qr-destination').textContent=saved.url;
+    $('qr-svg-download').href=svg;$('qr-png-download').href=canvas.toDataURL('image/png');$('qr-result').hidden=false;
+    notice('QR을 생성했습니다. PNG 또는 SVG 다운로드를 누르면 파일로 저장됩니다.');
+  }finally{button.disabled=false;}
+});});
 refresh();setInterval(refresh,5000);

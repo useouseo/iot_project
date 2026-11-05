@@ -35,6 +35,19 @@ def text_value(value, maximum, name):
     return value.strip()
 
 
+def visitor_url(value):
+    value=text_value(value,2048,'방문객 접속 주소')
+    try:
+        parsed=urlparse(value)
+        port=parsed.port
+        if parsed.scheme not in ('http','https') or not parsed.hostname or parsed.username is not None or parsed.password is not None:
+            raise ValueError()
+        if any(c.isspace() or ord(c)<32 for c in value):raise ValueError()
+    except ValueError:
+        raise Problem(400,'사용자명·비밀번호가 없는 올바른 http(s) 주소를 입력하세요')
+    return value
+
+
 def digest(token):
     return hashlib.sha256(token.encode()).hexdigest()
 
@@ -220,6 +233,11 @@ class App(BaseHTTPRequestHandler):
         if not hmac.compare_digest(self.token(),self.server.admin_token):
             raise Problem(401,'관리자 토큰을 확인하세요')
 
+    def qr_url(self):
+        with self.server.store.connect() as db:
+            row=db.execute("SELECT value FROM settings WHERE key='visitor_url'").fetchone()
+        return row['value'] if row else self.server.public_url
+
     def body(self):
         try: n=int(self.headers.get('Content-Length','0'))
         except ValueError: raise Problem(400,'잘못된 Content-Length')
@@ -243,7 +261,7 @@ class App(BaseHTTPRequestHandler):
                     with store.connect() as db: db.execute('SELECT 1').fetchone()
                     return self.send(200,{'ok':True,'demo':store.demo})
                 if p=='/api/admin':
-                    self.admin();return self.send(200,{'devices':store.all_devices()})
+                    self.admin();return self.send(200,{'devices':store.all_devices(),'visitor_url':self.qr_url()})
                 if p=='/api/history':
                     self.admin()
                     try: tid=int(parse_qs(route.query).get('toilet_id',['1'])[0])
@@ -252,8 +270,8 @@ class App(BaseHTTPRequestHandler):
                 if p=='/api/qr.svg':
                     import qrcode
                     import qrcode.image.svg
-                    url=self.server.public_url
-                    if not url: raise Problem(409,'서버 PUBLIC_URL 설정 후 QR을 생성하세요')
+                    url=self.qr_url()
+                    if not url: raise Problem(409,'관리자 화면에서 방문객 접속 주소를 입력하고 QR을 생성하세요')
                     img=qrcode.make(url,image_factory=qrcode.image.svg.SvgPathImage)
                     out=io.BytesIO();img.save(out)
                     return self.send(200,out.getvalue(),'image/svg+xml')
@@ -267,6 +285,11 @@ class App(BaseHTTPRequestHandler):
             if method=='POST' and p in ('/api/events','/api/heartbeat'):
                 return self.send(200,store.ingest(data,self.token(),p.endswith('heartbeat')))
             self.admin()
+            if method=='PUT' and p=='/api/visitor-url':
+                url=visitor_url(data.get('url'))
+                with store.connect() as db:
+                    db.execute("INSERT INTO settings VALUES('visitor_url',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",(url,))
+                return self.send(200,{'saved':True,'url':url})
             if method=='POST' and p=='/api/devices':return self.send(201,store.register(data))
             if method=='POST' and p=='/api/demo':return self.send(200,store.simulate())
             if method=='PUT' and p.startswith('/api/toilets/'):

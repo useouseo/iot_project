@@ -19,7 +19,7 @@ echo Admin page: http://localhost:8000/admin
 echo Admin token is stored locally in .runtime\admin-token after first start.
 echo Keep this window open. Press Ctrl+C to stop the server.
 echo.
-.venv\Scripts\python.exe server.py --demo
+.venv\Scripts\python.exe server.py --demo %*
 if errorlevel 1 goto failed
 pause
 exit /b 0

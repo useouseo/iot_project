@@ -47,10 +47,11 @@ flowchart LR
 |---|---|---|
 | GET /api/health | 없음 | HTTP·DB 가용성 |
 | GET /api/status | 없음 | 지도, 시설, 단계, 연결, 갱신시각, demo 플래그 |
-| GET /api/qr.svg | 없음 | PUBLIC_URL의 QR SVG를 로컬 생성. 미설정 409 |
+| GET /api/qr.svg | 없음 | 저장된 방문객 주소(없으면 PUBLIC_URL)의 QR SVG를 로컬 생성. 미설정 409 |
 | GET /api/admin | 관리자 | 장치 목록(토큰 제외) |
 | GET /api/history?toilet_id=1 | 관리자 | 최근 2시간 입·퇴장 통행량, 10분 단위 12구간 |
 | PUT /api/toilets/1 | 관리자 | name, stalls(1~100), x/y(3~97 정수 %) |
+| PUT /api/visitor-url | 관리자 | url: http(s) 방문객 주소 저장, URL 내 사용자명·비밀번호 거부 |
 | PUT /api/map | 관리자 | image: 최대 2MB PNG/JPEG data URI. SVG 거부 |
 | POST /api/devices | 관리자 | id, toilet_id로 등록, token을 한 번 반환 |
 | POST /api/reset | 관리자 | toilet_id의 혼잡도 계산 구간 초기화 |
@@ -74,3 +75,5 @@ flowchart LR
 ## 실행 범위
 
 현재는 소규모 시제품용 단일 프로세스 Python ThreadingHTTPServer+SQLite다. 실제 행사 공개 운영 전 HTTPS 종단, 요청 제한, 관리자 계정·토큰 회수/교체, 모니터링·DB 백업, 운영 로그·보관 정책을 별도 배치한다. 역사적 혼잡 단계 스냅샷·설정 변경 이력 전체는 구현하지 않았고 현재 추이 화면은 **원본 통행량**이다. 화장실 두 곳이 기본이며 설정 화면에서 이름/칸 수/위치/장치 등록을 지원한다. 동적 시설 추가·삭제는 현재 범위 밖이다.
+
+관리자 지도는 Pointer Events로 마우스/터치 드래그와 취소를 지원하고, 이동 초안은 저장 전까지 클라이언트에 유지한다. 좌표는 기존과 동일한 3~97% 정수 범위다. 방문객에게는 서버에 저장된 좌표만 제공한다. QR의 SVG는 서버에서 생성하고, PNG는 브라우저에서 흰 배경의 1024×1024 이미지로 변환해 다운로드한다. 이미지 파일을 서버 디스크에 쓰지 않는다.
