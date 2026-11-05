@@ -13,9 +13,8 @@ async function api(path,method='GET',body) {
   if(!res.ok){if(res.status===401&&adminPage&&authenticated&&path!=='/api/password')loggedOut('로그인이 만료되었습니다. 다시 로그인하세요.');throw new Error(data.error||`요청 실패 (${res.status})`);}
   return data;
 }
-function markerLabel(index) {
-  let label='';for(let n=index+1;n>0;n=Math.floor((n-1)/26))label=String.fromCharCode(65+(n-1)%26)+label;return label;
-}
+function markerLabel(index) { return String(index+1); }
+
 function current() { return snapshot?.toilets.find(t=>t.id===selected); }
 function select(id, scroll=false) {
   if(dirty && id!==selected && !confirm('저장하지 않은 설정을 버리고 다른 화장실을 선택할까요?')) {
