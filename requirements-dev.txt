@@ -1,0 +1,3 @@
+-r requirements.txt
+platformio==6.1.18
+playwright==1.62.0
