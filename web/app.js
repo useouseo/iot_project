@@ -157,13 +157,19 @@ function loggedOut(message='로그아웃했습니다.') {
   $('admin-panel').hidden=true;$('workspace').hidden=true;$('login-panel').hidden=false;$('device-token').value='';$('device-result').hidden=true;
   $('password-form').reset();notice(message);
 }
+async function checkBackend(){
+  const health=await api('/api/health');
+  if(health.auth_mode!=='password')throw new Error('이전 서버가 실행 중입니다. 기존 서버 창에서 Ctrl+C로 종료한 뒤, 수정한 폴더의 start_demo.bat를 다시 실행하고 브라우저에서 Ctrl+F5를 누르세요.');
+}
 async function showAdmin(){
+  await checkBackend();
   const settings=await api('/api/admin');authenticated=true;
   $('visitor-url').value=settings.visitor_url||location.origin;updateQrHint();
   $('admin-password').value='';$('login-panel').hidden=true;$('workspace').hidden=false;$('admin-panel').hidden=false;
   await refresh();fillForm();
 }
 $('login-form').addEventListener('submit',e=>{e.preventDefault();action(async()=>{
+  await checkBackend();
   await api('/api/login','POST',{password:$('admin-password').value});await showAdmin();notice('로그인했습니다.');
 });});
 $('logout').addEventListener('click',()=>action(async()=>{await api('/api/logout','POST',{});loggedOut();}));
@@ -248,5 +254,5 @@ $('qr-form').addEventListener('submit',e=>{e.preventDefault();action(async()=>{
     notice('QR을 생성했습니다. PNG 또는 SVG 다운로드를 누르면 파일로 저장됩니다.');
   }finally{button.disabled=false;}
 });});
-if(adminPage)showAdmin().catch(()=>{});else refresh();
+if(adminPage)showAdmin().catch(e=>{if(e.message.includes('이전 서버'))notice(e.message,true);});else refresh();
 setInterval(()=>{if(!adminPage||authenticated)refresh();},5000);

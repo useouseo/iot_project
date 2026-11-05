@@ -347,7 +347,7 @@ class App(BaseHTTPRequestHandler):
                 if p=='/api/status': return self.send(200,store.snapshot())
                 if p=='/api/health':
                     with store.connect() as db: db.execute('SELECT 1').fetchone()
-                    return self.send(200,{'ok':True,'demo':store.demo})
+                    return self.send(200,{'ok':True,'demo':store.demo,'auth_mode':'password','api_version':2})
                 if p=='/api/admin':
                     self.admin();return self.send(200,{'devices':store.all_devices(),'visitor_url':self.qr_url()})
                 if p=='/api/history':
@@ -438,9 +438,11 @@ def main():
     if url and (urlparse(url).scheme not in ('http','https') or not urlparse(url).netloc):
         raise SystemExit('PUBLIC_URL은 실제 접속 가능한 http(s) URL이어야 합니다')
     store=Store(args.db or runtime/('demo.sqlite3' if args.demo else 'live.sqlite3'),args.demo)
-    server=make_server(args.host,args.port,store,url)
+    try:server=make_server(args.host,args.port,store,url)
+    except OSError as error:
+        raise SystemExit(f'서버를 시작하지 못했습니다 (포트 {args.port}). 이전 서버 창을 Ctrl+C로 종료한 뒤 다시 실행하세요. 오류 코드: {error.errno}')
     print(f'RestFlow listening on port {server.server_port}; mode={"DEMO" if args.demo else "LIVE"}',flush=True)
-    print('관리자: /admin · 최초 비밀번호 1234 · 로그인 후 비밀번호 변경 가능',flush=True)
+    print('관리자: /admin · 관리자 비밀번호로 로그인하세요.',flush=True)
     try:server.serve_forever()
     except KeyboardInterrupt:pass
     finally:server.server_close()

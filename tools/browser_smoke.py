@@ -32,7 +32,13 @@ with tempfile.TemporaryDirectory() as folder:
             page.set_viewport_size({'width':390,'height':844});page.screenshot(path=str(shots/'visitor-mobile.png'),full_page=True)
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
             page.set_viewport_size({'width':1440,'height':1100});page.goto(url+'/admin')
+            assert '1234' not in page.locator('#login-panel').inner_text()
+            page.route('**/api/health',lambda route:route.fulfill(json={'ok':True,'demo':True}))
             page.locator('#admin-password').fill('1234');page.locator('#login-form button').click()
+            expect(page.locator('#notice')).to_contain_text('이전 서버가 실행 중입니다')
+            assert page.locator('#login-panel').is_visible()
+            page.unroute('**/api/health')
+            page.locator('#login-form button').click()
             page.wait_for_selector('#admin-panel:not([hidden])')
             def drag_marker(dx,dy):
                 marker=page.locator('.marker[data-id="1"]');marker.scroll_into_view_if_needed();box=marker.bounding_box()

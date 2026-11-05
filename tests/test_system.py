@@ -154,6 +154,7 @@ class HTTPTests(unittest.TestCase):
             self.assertEqual(headers['X-Content-Type-Options'],'nosniff')
     def test_health_and_admin_auth(self):
         self.assertEqual(self.request('/api/health')[0],200)
+        self.assertEqual(json.loads(self.request('/api/health')[1])['auth_mode'],'password')
         self.assertEqual(self.request('/api/admin')[0],401)
         self.assertEqual(self.request('/api/admin',token='integration-test-admin-token')[0],200)
     def test_full_api_event_roundtrip(self):
@@ -196,6 +197,9 @@ class HTTPTests(unittest.TestCase):
         for target in ('javascript:alert(1)','file:///tmp/secret','https://user:password@example.org','https://','http://host:bad','https://example.org/has space','https://example.org/\nsecret'):
             with self.subTest(target=target):
                 self.assertEqual(self.request('/api/visitor-url','PUT',{'url':target},'integration-test-admin-token')[0],400)
+    def test_login_page_does_not_disclose_initial_password(self):
+        for path in ('/','/admin','/app.js'):
+            self.assertNotIn('1234',self.request(path)[1].decode())
     def test_password_login_and_cookie_flags(self):
         status,body,headers=self.request('/api/login','POST',{'password':'1234'})
         self.assertEqual(status,200)
