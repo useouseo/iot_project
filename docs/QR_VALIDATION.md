@@ -1,11 +1,29 @@
-# MariaDB + QR 자동 연결 검증 (2026-11-06)
+# MariaDB · QR · 배포 준비 검증 (2026-11-06)
 
-- 첨부된 RestFlow_v3_MariaDB.zip을 기준으로 수정했습니다. MariaDB 커넥터와 저장 계층을 유지합니다.
-- MariaDB 11.4.13, Python 3.12, mariadb==1.1.14, qrcode==8.2에서 Python 테스트 47개 통과.
-- 실제 MariaDB에 연결한 HTTP API 테스트: 관리자 인증, 서버 공개 URL 우선 사용, 로컬 주소 차단, 기존 QR/센서/시설/비밀번호 기능.
-- 공개 실행기의 live/demo 선택, 기존 비밀번호 보존, 자동 공개 URL QR 생성, Ctrl+C 시 HTTP 서버와 터널 프로세스 정리를 검증했습니다. 이 실행기 시험은 실제 MariaDB/HTTP를 사용하고 Windows 및 Cloudflare 프로세스만 모의 처리합니다.
-- JavaScript node --check 및 변경 Python 파일 구문 검사 통과.
-- Windows BAT/실제 cloudflared 연결/실제 휴대폰 스캔/ESP32 기기 2대 실물 연결/브라우저 PNG 다운로드는 이번 환경에서 미검증입니다.
-- 유료 서버 구매/배포는 수행하지 않았습니다.
-- 테스트 DB는 실사용 DB와 분리한 _test 및 _launcher_test 이름을 사용하며 종료 시 삭제합니다. DB 생성/삭제 권한이 필요합니다.
-- docs/VALIDATION.md 및 기존 스크린샷은 첨부 원본의 이전 검증 자료입니다.
+## 현재 전제
+
+- 센서 2대는 아직 도착하지 않았습니다. 실제 기기 검증 완료를 주장하지 않습니다.
+- 유료 서버는 아직 구매하지 않았습니다. 서버 생성·결제·실제 배포는 하지 않았습니다.
+- PC public 실행 후 휴대폰 QR 외부 접속은 사용자가 확인했습니다.
+
+## 이번 환경에서 확인한 내용
+
+- Python 3.12 / MariaDB 11.4 / mariadb==1.1.14 / qrcode==8.2에서 **Python 테스트 52개 통과**.
+- 기존 센서/관리자/시설/인증 API와 자동 QR 주소 처리, live/demo 공개 실행기, 기본 비밀번호 변경·기존 비밀번호 보존, 파일 기반 비밀값 처리, 배포 설정 생성·보존 검증.
+- 운영용 Docker 이미지 실제 빌드 및 non-root 앱 실행 성공.
+- 실제 Compose 앱 + MariaDB + Caddy 환경에서 TLS 인증서를 신뢰하도록 설정한 HTTPS 요청 성공. 로컬 테스트 인증서를 사용했으며 공인 인증서 발급 시험은 아닙니다.
+- HTTPS 로그인 쿠키의 Secure/HttpOnly, 기본 비밀번호 차단, 자동 공개 QR 목적지 확인.
+- 두 가상 장치의 서로 다른 ID/토큰으로 실제 HTTP 이벤트를 전송해 시설별 기록 분리 확인. 물리 센서 시험은 아닙니다.
+- MariaDB와 앱 컨테이너 재시작 후 시설·통행 기록·변경한 관리자 비밀번호 유지 확인.
+- deploy/backup.sh로 압축 SQL 생성 → 시설 정보 변경 → deploy/restore.sh로 복원 → 기존 시설·기록·비밀번호 복원 확인.
+- Shell 구문 검사 및 JavaScript 구문 검사 통과. 백업 타이머 UTC 18:00 = 한국 시간 03:00 일정 표현 확인.
+- .github/workflows/checks.yml에 MariaDB 기반 자동 검사를 준비했습니다. 실제 GitHub 실행 상태는 해당 Actions 결과로 별도 확인합니다.
+
+## 아직 남은 검증
+
+- 실물 ESP32/센서 2대 빌드·업로드, 감지 정확도, Wi-Fi·배터리·현장 조건.
+- 실제 구매한 Ubuntu 24.04 VPS에서 install.sh 실행, 공인 DNS/ACME 인증서, 방화벽, OS 재부팅·systemd 백업 타이머 확인.
+- 해당 서버 사양에서 동시 접속/장기간 부하 검증과 외부 저장소로의 백업 보관.
+- 이번 환경에서 Windows 실행기·브라우저 PNG 다운로드를 새로 자동 검증하지는 않았습니다.
+
+기존 docs/VALIDATION.md 및 스크린샷은 첨부 원본의 이전 검증 자료입니다.
