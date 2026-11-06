@@ -64,7 +64,7 @@ with tempfile.TemporaryDirectory() as folder:
             page.locator('#toilet-name').fill('동문 화장실');page.locator('#stalls').fill('6')
             page.locator('#toilet-form button').click();expect(page.locator('.card-name strong').first).to_have_text('동문 화장실')
             expect(page.locator('#visitor-url')).to_have_value(url)
-            page.locator('#visitor-url').fill('https://festival.example.org/guide')
+            expect(page.locator('#visitor-url')).to_have_attribute('readonly','')
             page.locator('#qr-button').click();page.wait_for_selector('#qr-image:not([hidden])')
             assert page.locator('#qr-image').get_attribute('src').startswith('data:image/svg+xml')
             with page.expect_download() as result:page.locator('#qr-png-download').click()
