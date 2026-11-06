@@ -158,7 +158,7 @@ function loggedOut(message='로그아웃했습니다.') {
 }
 async function checkBackend(){
   const health=await api('/api/health');
-  if(health.auth_mode!=='password')throw new Error('이전 서버가 실행 중입니다. 기존 서버 창에서 Ctrl+C로 종료한 뒤, 수정한 폴더의 start_demo.bat를 다시 실행하고 브라우저에서 Ctrl+F5를 누르세요.');
+  if(health.auth_mode!=='password')throw new Error('이전 서버가 실행 중입니다. 기존 서버 창에서 Ctrl+C로 종료한 뒤, 수정한 폴더의 start_public.bat를 다시 실행하고 브라우저에서 Ctrl+F5를 누르세요.');
 }
 async function showAdmin(){
   await checkBackend();
