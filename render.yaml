@@ -1,0 +1,16 @@
+# Persistent disk requires a paid Render service. No service is created by this file alone.
+services:
+  - type: web
+    name: restflow
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: python server.py --host 0.0.0.0 --port $PORT --db /var/data/live.sqlite3
+    healthCheckPath: /api/health
+    disk:
+      name: restflow-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: INITIAL_ADMIN_PASSWORD
+        sync: false

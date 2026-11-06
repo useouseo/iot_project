@@ -184,6 +184,33 @@ class HTTPTests(unittest.TestCase):
     def test_qr_generated_locally(self):
         status,body,headers=self.request('/api/qr.svg');self.assertEqual(status,200)
         self.assertIn(b'<svg',body);self.assertIn('image/svg+xml',headers['Content-Type'])
+    def test_automatic_qr_requires_admin(self):
+        self.assertEqual(self.request('/api/qr','POST',{'url':'https://example.org/'})[0],401)
+
+    def test_automatic_qr_uses_public_url_without_saving_input(self):
+        with self.db.connect() as db:
+            before=db.execute("SELECT value FROM settings WHERE key='visitor_url'").fetchone()
+        status,body,_=self.request('/api/qr','POST',{'url':'http://localhost:8000/'},'integration-test-admin-token')
+        self.assertEqual(status,200)
+        result=json.loads(body)
+        self.assertEqual(result['url'],'https://event.example.org')
+        self.assertIn('<svg',result['svg'])
+        with self.db.connect() as db:
+            after=db.execute("SELECT value FROM settings WHERE key='visitor_url'").fetchone()
+        self.assertEqual(tuple(before) if before else None,tuple(after) if after else None)
+
+    def test_automatic_qr_browser_origin_fallback_and_local_rejection(self):
+        original=self.server.public_url
+        self.server.public_url=''
+        try:
+            for local in ('http://localhost:8000/','http://127.0.0.1:8000/','http://192.168.0.166:8000/','http://[::1]/','http://localhost./'):
+                self.assertEqual(self.request('/api/qr','POST',{'url':local},'integration-test-admin-token')[0],409)
+            status,body,_=self.request('/api/qr','POST',{'url':'https://festival.example.org/'},'integration-test-admin-token')
+            self.assertEqual(status,200)
+            self.assertEqual(json.loads(body)['url'],'https://festival.example.org/')
+        finally:
+            self.server.public_url=original
+
     def test_visitor_url_requires_admin(self):
         self.assertEqual(self.request('/api/visitor-url','PUT',{'url':'https://event.example.org'})[0],401)
     def test_visitor_url_saved_and_used_for_qr(self):
