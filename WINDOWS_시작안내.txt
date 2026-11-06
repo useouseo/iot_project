@@ -8,7 +8,6 @@ MariaDB + QR 자동 연결 실행
 6. 휴대폰에서 LTE/5G로 QR 접속을 확인합니다.
 
 가상 데이터 시연은 start_public_demo.bat를 사용하세요.
-start_demo.bat는 기존 로컬 가상 데이터 시연용입니다.
 기존 설정 보존: db_config.json을 유지하고 MariaDB 데이터베이스를 삭제하지 마세요.
 실행 종료: 검은 창에서 Ctrl+C. 다시 실행하면 새 QR이 필요합니다.
 실제 기기는 새 공개 API_BASE, 장치 토큰, HTTPS 루트 인증서를 별도로 설정해야 합니다.
