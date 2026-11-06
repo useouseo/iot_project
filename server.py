@@ -1,4 +1,4 @@
-"""RestFlow: window-based congestion, SQLite storage, visitor/admin HTTP API."""
+"""RestFlow: window-based congestion, MariaDB storage, visitor/admin HTTP API."""
 import argparse
 import hashlib
 import hmac
@@ -8,17 +8,99 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import secrets
-import sqlite3
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from http.cookies import SimpleCookie, CookieError
 from urllib.parse import urlparse, parse_qs
 
+import mariadb
+
 ROOT = Path(__file__).resolve().parent
 WINDOW = 600
 OFFLINE = 120
 MAX_BODY = 2_800_000
+DB_CONFIG_PATH = ROOT/'db_config.json'
+DB_ENV = {
+    'host':'RESTFLOW_DB_HOST',
+    'port':'RESTFLOW_DB_PORT',
+    'user':'RESTFLOW_DB_USER',
+    'password':'RESTFLOW_DB_PASSWORD',
+    'database':'RESTFLOW_DB_DATABASE',
+    'demo_database':'RESTFLOW_DB_DEMO_DATABASE',
+}
+
+
+def database_name(value, field='database'):
+    if not isinstance(value,str) or not re.fullmatch(r'[A-Za-z0-9_]{1,64}',value):
+        raise ValueError(f'{field}는 영문, 숫자, 밑줄로 된 1~64자 이름이어야 합니다')
+    return value
+
+
+def load_db_config(path=None):
+    """Load non-secret defaults from JSON and allow environment overrides."""
+    path=Path(path or os.environ.get('RESTFLOW_DB_CONFIG',DB_CONFIG_PATH))
+    config={}
+    if path.exists():
+        try:
+            value=json.loads(path.read_text(encoding='utf-8'))
+        except (OSError,ValueError) as error:
+            raise SystemExit(f'MariaDB 설정 파일을 읽을 수 없습니다: {error}')
+        if not isinstance(value,dict):
+            raise SystemExit('MariaDB 설정 파일은 JSON 객체여야 합니다')
+        config.update(value)
+    for key,env_name in DB_ENV.items():
+        if env_name in os.environ:config[key]=os.environ[env_name]
+    missing=[key for key in ('host','user','database','demo_database') if not config.get(key)]
+    if missing:
+        raise SystemExit('MariaDB 설정이 없습니다. 먼저 setup_mariadb.py를 실행하세요. 누락: '+', '.join(missing))
+    try:
+        config['port']=int(config.get('port',3306))
+        if not 1<=config['port']<=65535:raise ValueError()
+        database_name(config['database']);database_name(config['demo_database'],'demo_database')
+    except (TypeError,ValueError) as error:
+        raise SystemExit(f'MariaDB 설정이 올바르지 않습니다: {error}')
+    config['password']=str(config.get('password',''))
+    return {key:config[key] for key in ('host','port','user','password','database','demo_database')}
+
+
+class Database:
+    """Small DB-API wrapper that commits/rolls back and always closes MariaDB handles."""
+    def __init__(self,config,database):
+        self.config,self.database=config,database
+        self.connection=None
+        self.cursors=[]
+
+    def __enter__(self):
+        params={key:self.config[key] for key in ('host','port','user','password')}
+        params['database']=self.database
+        self.connection=mariadb.connect(**params)
+        return self
+
+    def cursor(self):
+        cursor=self.connection.cursor(dictionary=True)
+        self.cursors.append(cursor)
+        return cursor
+
+    def execute(self,sql,params=()):
+        cursor=self.cursor();cursor.execute(sql,params);return cursor
+
+    def executemany(self,sql,params):
+        cursor=self.cursor();cursor.executemany(sql,params);return cursor
+
+    def __exit__(self,kind,error,traceback):
+        try:
+            if self.connection:
+                self.connection.rollback() if error else self.connection.commit()
+        finally:
+            for cursor in reversed(self.cursors):
+                try:cursor.close()
+                except mariadb.Error:pass
+            if self.connection:
+                try:self.connection.close()
+                except mariadb.Error:pass
+        return False
 
 class Problem(Exception):
     def __init__(self, status, message):
@@ -87,36 +169,54 @@ def password_value(value):
 
 
 class Store:
-    def __init__(self, path, demo=False):
-        self.path, self.demo = str(path), demo
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
+    TABLES=('events','sessions','admin_sessions','devices','settings','audit','admin_credentials','toilets')
+    def __init__(self, config, demo=False, reset_schema=False):
+        self.config,self.demo=config.copy(),demo
+        self.database=config['demo_database'] if demo else config['database']
         with self.connect() as db:
-            db.executescript('''
-            PRAGMA journal_mode=WAL;
-            CREATE TABLE IF NOT EXISTS toilets(id INTEGER PRIMARY KEY, name TEXT NOT NULL,
-              stalls INTEGER NOT NULL, x INTEGER NOT NULL, y INTEGER NOT NULL, reset_at REAL NOT NULL DEFAULT 0);
-            CREATE TABLE IF NOT EXISTS devices(id TEXT PRIMARY KEY, toilet_id INTEGER UNIQUE NOT NULL REFERENCES toilets(id),
-              token_hash TEXT NOT NULL, last_seen REAL, quality TEXT NOT NULL DEFAULT 'unknown');
-            CREATE TABLE IF NOT EXISTS sessions(device_id TEXT NOT NULL REFERENCES devices(id), boot_id TEXT NOT NULL,
-              last_seq INTEGER NOT NULL, PRIMARY KEY(device_id,boot_id));
-            CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY, device_id TEXT NOT NULL REFERENCES devices(id),
-              boot_id TEXT NOT NULL, seq INTEGER NOT NULL, direction TEXT NOT NULL,
-              occurred_at REAL NOT NULL, received_at REAL NOT NULL,
-              UNIQUE(device_id,boot_id,seq));
-            CREATE INDEX IF NOT EXISTS event_time ON events(occurred_at);
-            CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
-            CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, at REAL NOT NULL, action TEXT NOT NULL);
-            ''')
-            if 'active' not in {r['name'] for r in db.execute('PRAGMA table_info(toilets)')}:
-                db.execute('ALTER TABLE toilets ADD COLUMN active INTEGER NOT NULL DEFAULT 1')
-            db.executescript('''
-            CREATE TABLE IF NOT EXISTS admin_credentials(id INTEGER PRIMARY KEY CHECK(id=1),salt TEXT NOT NULL,password_hash TEXT NOT NULL);
-            CREATE TABLE IF NOT EXISTS admin_sessions(token_hash TEXT PRIMARY KEY,expires_at REAL NOT NULL);
-            ''')
+            if reset_schema:
+                for table in self.TABLES:db.execute(f'DROP TABLE IF EXISTS `{table}`')
+            statements=('''CREATE TABLE IF NOT EXISTS toilets(
+              id INT PRIMARY KEY AUTO_INCREMENT, name VARCHAR(40) NOT NULL,
+              stalls INT NOT NULL, x INT NOT NULL, y INT NOT NULL,
+              reset_at DOUBLE NOT NULL DEFAULT 0, active TINYINT(1) NOT NULL DEFAULT 1)
+              ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci''',
+            '''CREATE TABLE IF NOT EXISTS devices(
+              id VARCHAR(64) PRIMARY KEY, toilet_id INT UNIQUE NOT NULL,
+              token_hash CHAR(64) NOT NULL, last_seen DOUBLE NULL,
+              quality VARCHAR(16) NOT NULL DEFAULT 'unknown',
+              CONSTRAINT fk_devices_toilet FOREIGN KEY(toilet_id) REFERENCES toilets(id))
+              ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci''',
+            '''CREATE TABLE IF NOT EXISTS sessions(
+              device_id VARCHAR(64) NOT NULL, boot_id VARCHAR(64) NOT NULL,
+              last_seq INT NOT NULL, PRIMARY KEY(device_id,boot_id),
+              CONSTRAINT fk_sessions_device FOREIGN KEY(device_id) REFERENCES devices(id))
+              ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci''',
+            '''CREATE TABLE IF NOT EXISTS events(
+              id BIGINT PRIMARY KEY AUTO_INCREMENT, device_id VARCHAR(64) NOT NULL,
+              boot_id VARCHAR(64) NOT NULL, seq INT NOT NULL,
+              direction VARCHAR(8) NOT NULL, occurred_at DOUBLE NOT NULL,
+              received_at DOUBLE NOT NULL,
+              CONSTRAINT fk_events_device FOREIGN KEY(device_id) REFERENCES devices(id),
+              UNIQUE KEY uq_event(device_id,boot_id,seq), KEY event_time(occurred_at))
+              ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci''',
+            '''CREATE TABLE IF NOT EXISTS settings(
+              `key` VARCHAR(64) PRIMARY KEY, `value` LONGTEXT NOT NULL)
+              ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci''',
+            '''CREATE TABLE IF NOT EXISTS audit(
+              id BIGINT PRIMARY KEY AUTO_INCREMENT, at DOUBLE NOT NULL, action VARCHAR(255) NOT NULL)
+              ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci''',
+            '''CREATE TABLE IF NOT EXISTS admin_credentials(
+              id TINYINT PRIMARY KEY, salt CHAR(32) NOT NULL, password_hash CHAR(64) NOT NULL)
+              ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci''',
+            '''CREATE TABLE IF NOT EXISTS admin_sessions(
+              token_hash CHAR(64) PRIMARY KEY, expires_at DOUBLE NOT NULL)
+              ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci''')
+            for statement in statements:db.execute(statement)
             if not db.execute('SELECT 1 FROM admin_credentials WHERE id=1').fetchone():
                 salt=secrets.token_hex(16)
                 db.execute('INSERT INTO admin_credentials VALUES(1,?,?)',(salt,password_hash('1234',salt)))
-            if not db.execute('SELECT count(*) FROM toilets').fetchone()[0]:
+            if not db.execute('SELECT count(*) AS n FROM toilets').fetchone()['n']:
                 db.executemany('INSERT INTO toilets(id,name,stalls,x,y) VALUES(?,?,?,?,?)', [
                     (1,'화장실 A',4,22,28), (2,'화장실 B',4,78,48)])
                 if demo:
@@ -127,10 +227,7 @@ class Store:
             self.simulate()
 
     def connect(self):
-        db = sqlite3.connect(self.path, timeout=10)
-        db.row_factory = sqlite3.Row
-        db.execute('PRAGMA foreign_keys=ON')
-        return db
+        return Database(self.config,self.database)
 
     def all_devices(self):
         with self.connect() as db:
@@ -139,8 +236,7 @@ class Store:
     def login(self, password):
         password=password_value(password)
         with self.connect() as db:
-            db.execute('BEGIN IMMEDIATE')
-            row=db.execute('SELECT * FROM admin_credentials WHERE id=1').fetchone()
+            row=db.execute('SELECT * FROM admin_credentials WHERE id=1 FOR UPDATE').fetchone()
             if not hmac.compare_digest(row['password_hash'],password_hash(password,row['salt'])):
                 raise Problem(401,'비밀번호가 올바르지 않습니다')
             return self.new_session(db)
@@ -162,8 +258,7 @@ class Store:
     def change_password(self,current,new):
         current=password_value(current);new=password_value(new)
         with self.connect() as db:
-            db.execute('BEGIN IMMEDIATE')
-            row=db.execute('SELECT * FROM admin_credentials WHERE id=1').fetchone()
+            row=db.execute('SELECT * FROM admin_credentials WHERE id=1 FOR UPDATE').fetchone()
             if not hmac.compare_digest(row['password_hash'],password_hash(current,row['salt'])):
                 raise Problem(401,'현재 비밀번호가 올바르지 않습니다')
             salt=secrets.token_hex(16)
@@ -201,12 +296,13 @@ class Store:
                     raise Problem(404,'화장실을 찾을 수 없습니다')
                 db.execute('INSERT INTO devices(id,toilet_id,token_hash) VALUES(?,?,?)',(device,toilet,digest(token)))
                 db.execute('INSERT INTO audit(at,action) VALUES(?,?)',(time.time(),f'device registered: {device}'))
-        except sqlite3.IntegrityError:
+        except mariadb.IntegrityError:
             raise Problem(409,'화장실이 없거나 이미 등록된 장치/화장실입니다')
         return {'id':device,'token':token}
 
-    def authenticate_device(self, device, token, db):
-        row = db.execute('SELECT d.* FROM devices d JOIN toilets t ON t.id=d.toilet_id WHERE d.id=? AND t.active=1',(device,)).fetchone()
+    def authenticate_device(self, device, token, db, lock=False):
+        suffix=' FOR UPDATE' if lock else ''
+        row = db.execute('SELECT d.* FROM devices d JOIN toilets t ON t.id=d.toilet_id WHERE d.id=? AND t.active=1'+suffix,(device,)).fetchone()
         if not row or not hmac.compare_digest(row['token_hash'],digest(token)):
             raise Problem(401,'장치 인증에 실패했습니다')
         return row
@@ -218,8 +314,7 @@ class Store:
         if quality not in ('good','degraded','fault'):
             raise Problem(400,'quality 값이 올바르지 않습니다')
         with self.connect() as db:
-            db.execute('BEGIN IMMEDIATE')
-            self.authenticate_device(device,token,db)
+            self.authenticate_device(device,token,db,True)
             if heartbeat:
                 db.execute('UPDATE devices SET last_seen=?,quality=? WHERE id=?',(now,quality,device))
                 return {'accepted':True}
@@ -242,7 +337,7 @@ class Store:
                 raise Problem(409,'순서번호가 역전됐습니다. 큐를 순서대로 전송하세요')
             db.execute('INSERT INTO events(device_id,boot_id,seq,direction,occurred_at,received_at) VALUES(?,?,?,?,?,?)',
                        (device,boot,seq,direction,at,now))
-            db.execute('INSERT INTO sessions VALUES(?,?,?) ON CONFLICT(device_id,boot_id) DO UPDATE SET last_seq=excluded.last_seq',(device,boot,seq))
+            db.execute('INSERT INTO sessions VALUES(?,?,?) ON DUPLICATE KEY UPDATE last_seq=VALUES(last_seq)',(device,boot,seq))
             db.execute('UPDATE devices SET last_seen=?,quality=? WHERE id=?',(now,quality,device))
             return {'accepted':True,'duplicate':False}
 
@@ -257,7 +352,7 @@ class Store:
                   AND occurred_at>=? AND occurred_at<=? GROUP BY direction''',
                   (t['device_id'],max(now-WINDOW,t['reset_at']),now)).fetchall()
                 counts={r['direction']:r['n'] for r in counts}
-                prev=db.execute("SELECT count(*) FROM events WHERE device_id=? AND direction='in' AND occurred_at>=? AND occurred_at<?",(t['device_id'],max(now-2*WINDOW,t['reset_at']),now-WINDOW)).fetchone()[0]
+                prev=db.execute("SELECT count(*) AS n FROM events WHERE device_id=? AND direction='in' AND occurred_at>=? AND occurred_at<?",(t['device_id'],max(now-2*WINDOW,t['reset_at']),now-WINDOW)).fetchone()['n']
                 ins,outs=counts.get('in',0),counts.get('out',0)
                 score=(.6*ins+.4*max(0,ins-outs)+.2*max(0,ins-prev))/t['stalls']
                 online = t['last_seen'] is not None and now-t['last_seen'] <= OFFLINE
@@ -265,7 +360,7 @@ class Store:
                 level = ('busy' if score>=2 else 'moderate' if score>=.8 else 'quiet') if healthy else 'unknown'
                 t.update(level=level,online=online,score=round(score,2),entries=ins,exits=outs,previous_entries=prev)
                 result.append(t)
-            settings={r['key']:r['value'] for r in db.execute("SELECT * FROM settings WHERE key IN ('map','visitor_url')")}
+            settings={r['key']:r['value'] for r in db.execute("SELECT * FROM settings WHERE `key` IN ('map','visitor_url')")}
         return {'toilets':result,'updated_at':now,'window_seconds':WINDOW,'demo':self.demo,'settings':settings}
 
     def history(self,toilet_id,now=None):
@@ -273,7 +368,7 @@ class Store:
         end=int(now//600)*600
         with self.connect() as db:
             device=db.execute('SELECT id FROM devices WHERE toilet_id=?',(toilet_id,)).fetchone()
-            rows=db.execute('''SELECT cast(occurred_at/600 AS INTEGER)*600 bucket,direction,count(*) n FROM events
+            rows=db.execute('''SELECT FLOOR(occurred_at/600)*600 bucket,direction,count(*) n FROM events
               WHERE device_id=? AND occurred_at>=? AND occurred_at<? GROUP BY bucket,direction''',
               (device['id'] if device else '',end-11*600,end+600)).fetchall()
         lookup={(r['bucket'],r['direction']):r['n'] for r in rows}
@@ -305,7 +400,7 @@ class Store:
 
 
 class App(BaseHTTPRequestHandler):
-    server_version='RestFlow/1.0'
+    server_version='RestFlow/3.0'
     def log_message(self,fmt,*args):
         # Do not log request URLs, bodies or authentication headers.
         pass
@@ -345,7 +440,7 @@ class App(BaseHTTPRequestHandler):
 
     def qr_url(self):
         with self.server.store.connect() as db:
-            row=db.execute("SELECT value FROM settings WHERE key='visitor_url'").fetchone()
+            row=db.execute("SELECT value FROM settings WHERE `key`='visitor_url'").fetchone()
         return row['value'] if row else self.server.public_url
 
     def body(self):
@@ -380,7 +475,7 @@ class App(BaseHTTPRequestHandler):
                     return self.send(200,store.history(tid))
                 if p=='/api/qr.svg':
                     url=self.qr_url()
-                    if not url: raise Problem(409,'외부 접속 실행 후 관리자 화면에서 QR을 생성하세요')
+                    if not url:raise Problem(409,'start_public.bat 실행 후 관리자 화면에서 QR을 생성하세요')
                     return self.send(200,qr_svg(url),'image/svg+xml')
                 allowed={'/':'index.html','/admin':'index.html','/app.js':'app.js','/style.css':'style.css','/map.svg':'map.svg'}
                 if p in allowed:
@@ -412,7 +507,7 @@ class App(BaseHTTPRequestHandler):
             if method=='PUT' and p=='/api/visitor-url':
                 url=visitor_url(data.get('url'))
                 with store.connect() as db:
-                    db.execute("INSERT INTO settings VALUES('visitor_url',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",(url,))
+                    db.execute("INSERT INTO settings VALUES('visitor_url',?) ON DUPLICATE KEY UPDATE `value`=VALUES(`value`)",(url,))
                 return self.send(200,{'saved':True,'url':url})
             if method=='POST' and p=='/api/devices':return self.send(201,store.register(data))
             if method=='POST' and p=='/api/demo':return self.send(200,store.simulate())
@@ -437,7 +532,7 @@ class App(BaseHTTPRequestHandler):
                 if len(raw)>2_000_000:raise Problem(413,'이미지는 2MB 이하여야 합니다')
                 if not ((image.startswith('data:image/png;') and raw.startswith(b'\x89PNG\r\n\x1a\n')) or (image.startswith('data:image/jpeg;') and raw.startswith(b'\xff\xd8\xff'))):
                     raise Problem(400,'이미지 형식이 일치하지 않습니다')
-                with store.connect() as db:db.execute("INSERT INTO settings VALUES('map',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",(image,))
+                with store.connect() as db:db.execute("INSERT INTO settings VALUES('map',?) ON DUPLICATE KEY UPDATE `value`=VALUES(`value`)",(image,))
                 return self.send(200,{'saved':True})
             raise Problem(404,'경로를 찾을 수 없습니다')
         except Problem as e:self.send(e.status,{'error':e.message})
@@ -454,19 +549,14 @@ def make_server(host,port,store,public_url=''):
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--host',default='127.0.0.1');p.add_argument('--port',type=int,default=8000)
-    p.add_argument('--demo',action='store_true');p.add_argument('--db');args=p.parse_args()
-    runtime=ROOT/'.runtime';runtime.mkdir(exist_ok=True)
+    p.add_argument('--demo',action='store_true');p.add_argument('--db-config',default=os.environ.get('RESTFLOW_DB_CONFIG',str(DB_CONFIG_PATH)));args=p.parse_args()
     url=os.environ.get('PUBLIC_URL',os.environ.get('RENDER_EXTERNAL_URL','')).rstrip('/')
     if url and (urlparse(url).scheme not in ('http','https') or not urlparse(url).netloc):
         raise SystemExit('PUBLIC_URL은 실제 접속 가능한 http(s) URL이어야 합니다')
-    store=Store(args.db or runtime/('demo.sqlite3' if args.demo else 'live.sqlite3'),args.demo)
-    initial=os.environ.get('INITIAL_ADMIN_PASSWORD','')
-    if initial:
-        if len(initial)<8 or initial=='1234':raise SystemExit('INITIAL_ADMIN_PASSWORD는 8자 이상이어야 합니다')
-        with store.connect() as db:
-            row=db.execute('SELECT * FROM admin_credentials WHERE id=1').fetchone()
-        if hmac.compare_digest(row['password_hash'],password_hash('1234',row['salt'])):
-            token=store.change_password('1234',initial);store.logout(token)
+    config=load_db_config(args.db_config)
+    try:store=Store(config,args.demo)
+    except mariadb.Error as error:
+        raise SystemExit(f'MariaDB에 연결하지 못했습니다: {error}. MariaDB 서비스와 db_config.json을 확인하세요.')
     try:server=make_server(args.host,args.port,store,url)
     except OSError as error:
         raise SystemExit(f'서버를 시작하지 못했습니다 (포트 {args.port}). 이전 서버 창을 Ctrl+C로 종료한 뒤 다시 실행하세요. 오류 코드: {error.errno}')
