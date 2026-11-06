@@ -1,0 +1,11 @@
+.git
+.venv
+.runtime
+**/__pycache__
+**/*.pyc
+db_config.json
+.env
+**/.env
+**/.secrets
+**/.backups
+firmware/include/secrets.h
