@@ -90,3 +90,12 @@ flowchart LR
 - `GET /api/admin`: `automatic_visitor_url`을 추가합니다.
 - `tools/public_start.py`: MariaDB 설정을 재사용하고 기본 live Store를 만든 뒤 초기 관리자 비밀번호를 변경하고 서버를 바인딩합니다. Quick Tunnel URL을 받으면 server.public_url을 설정합니다. 종료 시 터널과 HTTP 서버를 닫으며 DB 데이터는 삭제하지 않습니다.
 - `start_public_demo.bat`는 동일 실행기에 --demo를 전달합니다.
+
+
+## 유료 서버 구매 전 배포 준비
+
+- deploy/compose.yaml: MariaDB 11.4 + non-root Python 앱 + Caddy HTTPS, 영구 DB/인증서 볼륨, 자동 재시작 및 상태 검사. DB/앱 포트는 호스트에 게시하지 않습니다.
+- RESTFLOW_DB_PASSWORD_FILE은 DB 비밀번호의 파일 입력을 지원하며 일반 환경변수보다 우선합니다.
+- RESTFLOW_INITIAL_ADMIN_PASSWORD(_FILE)는 기본 비밀번호일 때만 최초 비밀번호를 적용합니다. 이미 변경한 비밀번호는 유지합니다.
+- deploy/configure.py는 도메인·이메일과 비밀 파일을 생성하며 기존 비밀값을 보존합니다. deploy/install.sh는 실제 구매한 Ubuntu 24.04 서버의 /opt/restflow에서만 실행합니다.
+- 백업은 한국 시간 03:00 로컬 SQL 압축 파일로 저장하며, 명시적 --confirm-replace 옵션으로 복원합니다. 자세한 단계와 미검증 범위는 docs/배포준비.md에 있습니다.
