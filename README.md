@@ -1,147 +1,86 @@
-# RestFlow v3 · MariaDB 기반 탈부착형 화장실 혼잡 안내 IoT
+# RestFlow · MariaDB 기반 화장실 혼잡 안내
 
-ATOM Lite + VL53L1X가 입·퇴장 이벤트를 Wi-Fi로 전송하고, Python 서버가 MariaDB에 저장한 뒤 최근 10분 통행량 기반 혼잡도를 방문객 지도와 관리자 화면에 표시하는 시제품입니다. 정확한 내부 인원수나 대기시간을 주장하지 않습니다.
+ATOM Lite + VL53L1X → HTTPS 이벤트 수신 → MariaDB → 방문객 지도·관리자 화면으로 구성된 IoT 시제품입니다. 최근 10분 통행량으로 혼잡 단계를 추정하며, 정확한 내부 인원수나 대기시간을 표시하지 않습니다.
 
-## 현재 준비 단계
+**최종 준비본 · 2026-11-06**
 
-**센서 미도착 · 유료 서버 미구매 상태에서 준비한 버전입니다.** PC에서 QR 외부 접속은 사용자가 확인했습니다. 실제 기기 연결과 유료 서버 배포는 아직 하지 않았습니다.
+- **센서 2대는 아직 미도착**: 실제 기기 연결·정확도 시험은 남아 있습니다.
+- **유료 서버는 아직 미구매**: 배포용 설정을 준비했으며 실제 구매·배포는 하지 않았습니다.
+- **PC에서 휴대폰 QR 외부 접속은 확인**했습니다.
+- 이 기본 브랜치가 최신 준비본입니다. [ZIP 다운로드](https://github.com/useouseo/iot_project/archive/refs/heads/codex-mariadb-public-qr-20261106.zip)
 
-- 센서 없이 화면을 시연할 때는 **`start_public_demo.bat`**를 실행합니다.
-- 기기가 도착하면 **`start_public.bat`**로 실제 센서 모드를 실행합니다.
-- 서버 구매 후 사용할 설치·자동 실행·HTTPS·백업·복원 파일은 **`deploy/`**에 준비했습니다. 지금 실행할 필요는 없습니다.
-- 다음 단계와 서버 구매 후 절차: **[배포 준비 안내](docs/배포준비.md)**
+## 지금 실행하는 방법
 
-## v3 변경 사항
+Windows에 **Python 3.12 64-bit와 MariaDB Server**가 필요합니다. MariaDB 서비스를 실행한 뒤 압축을 푼 폴더에서 아래 파일을 더블클릭합니다. CMD에 Python 명령어를 직접 입력할 필요는 없습니다.
 
-- 기존 SQLite 저장 계층을 공식 `mariadb` Python 커넥터와 MariaDB 서버로 완전히 교체했습니다.
-- 강의안/WEEK6 예제와 같은 `mariadb.connect(...)`, `cursor(dictionary=True)`, `?` 파라미터 바인딩 구조를 사용합니다.
-- 연결마다 commit/rollback과 cursor/connection close를 보장합니다.
-- 실사용 DB와 시연 DB를 각각 `restflow`, `restflow_demo`로 분리합니다.
-- 접속정보는 소스가 아니라 `db_config.json` 또는 환경변수로 관리합니다.
-- 기존 혼잡도 계산·관리자·ESP32 이벤트 형식을 유지하며 QR 주소 자동 연결과 서버 배포 준비를 추가했습니다.
-
-## 준비 사항
-
-- Python 3.12 이상
-- MariaDB Server가 설치되고 서비스가 실행 중이어야 함
-- DB를 만들 수 있는 MariaDB 계정 또는 미리 생성된 `restflow`, `restflow_demo` DB에 권한이 있는 계정
-
-## Windows 빠른 실행 — QR 자동 연결
-
-1. PC의 MariaDB 서비스를 실행합니다. Python 3.12 64-bit와 인터넷 연결이 필요합니다.
-2. **`start_public.bat`를 더블클릭합니다.** 기본은 실제 센서 모드입니다.
-3. 설정 파일이 없으면 MariaDB 접속정보를 입력합니다. 기존 `db_config.json`은 그대로 사용합니다.
-4. 초기 관리자 비밀번호를 사용 중이면 새 비밀번호(8~128자)를 설정합니다. 입력 중 글자는 보이지 않습니다.
-5. 자동으로 열린 관리자 화면에서 로그인하고 **QR 생성**만 누릅니다. 공개 주소가 자동으로 연결됩니다.
-6. 방문객은 생성된 QR로 다른 Wi-Fi·LTE·5G에서도 접속할 수 있습니다.
-
-**PC·MariaDB·검은 실행 창을 유지하세요.** 종료는 Ctrl+C입니다. 재실행하면 주소가 바뀌므로 QR도 다시 생성해야 합니다. MariaDB 데이터와 이미 변경한 비밀번호는 보존됩니다. Quick Tunnel은 시험용이며 고정 주소와 가용성을 보장하지 않습니다.
-
-| 실행 파일 | 용도 | 데이터베이스 |
+| 실행 파일 | 사용할 때 | DB 기본 이름 |
 |---|---|---|
-| `start_public.bat` | 실제 기기 연결 + 외부 QR 접속 | `database` (기본 `restflow`) |
-| `start_public_demo.bat` | 가상 데이터 + 외부 QR 접속 | `demo_database` (기본 `restflow_demo`) |
+| **`start_public_demo.bat`** | **지금: 센서 없이 가상 데이터로 QR 시연** | `restflow_demo` |
+| **`start_public.bat`** | **센서 도착 후: PC에서 실제 장치 데이터 수신 + QR 접속** | `restflow` |
 
-상세 절차와 문제 해결은 [QR 시작 안내](QR_시작안내.txt)를 확인하세요.
+1. 첫 실행이면 MariaDB 접속정보를 입력합니다. 기존 `db_config.json`은 그대로 사용합니다.
+2. 관리자 비밀번호가 초기값이면 새 비밀번호(8~128자)를 설정합니다. 입력 중 글자는 표시되지 않습니다.
+3. 자동으로 열린 관리자 화면에 로그인하고 **QR 생성**을 누릅니다. 주소를 직접 입력하지 않습니다.
+4. QR을 PNG/SVG로 저장하거나 휴대폰으로 스캔합니다. 다른 Wi-Fi·LTE·5G에서도 접속할 수 있습니다.
 
-관리자 주소 필드는 읽기 전용입니다. `POST /api/qr`는 서버의 공개 주소를 우선 사용하며 QR SVG와 목적지를 함께 반환합니다. 이전에 저장된 수동 URL은 새 QR 버튼에 영향을 주지 않습니다. 외부용 QR에 localhost/사설 IP를 넣으려 하면 안내를 표시합니다. PNG/SVG 다운로드 기능은 유지합니다.
+두 모드의 시설·장치·기록·관리자 비밀번호는 분리돼 있습니다. 가상 데이터가 실제 센서 기록에 섞이지 않습니다. 센서를 연결하지 않은 live 화면의 ‘확인 필요’ 표시는 정상입니다.
 
-`db_config.json`에는 DB 비밀번호가 들어갈 수 있습니다. Git/메신저에 공유하지 마십시오. `.gitignore`에서 제외합니다.
+### 처음 나오는 DB 입력값
 
-## 수동 실행
+같은 PC에 기본 설정으로 MariaDB를 설치했다면 다음과 같습니다.
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe setup_mariadb.py
-.\.venv\Scripts\python.exe server.py --demo
+| 질문 | 입력 |
+|---|---|
+| DB 호스트 `[localhost]` | Enter |
+| DB 포트 `[3306]` | Enter |
+| DB 사용자 `[root]` | 별도 계정이 없다면 Enter |
+| DB 비밀번호 | MariaDB 설치 때 정한 DB 계정 비밀번호 |
+| 실사용 DB `[restflow]` / 시연 DB `[restflow_demo]` | Enter |
+
+**DB 비밀번호와 웹 관리자 비밀번호는 서로 다릅니다.** `db_config.json`에는 DB 접속정보가 있으므로 공유하거나 GitHub에 올리지 않습니다.
+
+### PC 공개 접속을 유지하려면
+
+- PC·MariaDB·검은 실행 창·인터넷 연결을 유지합니다. PC 절전 모드를 피합니다.
+- 종료는 `Ctrl+C`입니다. 실행을 종료해도 MariaDB 데이터는 유지됩니다.
+- 다시 실행하면 임시 공개 주소가 바뀌므로 **QR을 새로 생성**해야 합니다.
+- 실제 기기도 임시 공개 주소를 사용한다면 **기기의 `API_BASE`도 갱신·재업로드**해야 합니다.
+- Quick Tunnel은 시험용입니다. 같은 주소를 계속 쓰는 서버 배포와는 구분합니다.
+
+포트가 사용 중이면 기존 실행 창을 종료하거나 CMD에서 `start_public_demo.bat --port 8001` / `start_public.bat --port 8001`을 실행합니다. DB 설정을 다시 입력하려면 `.venv\Scripts\python.exe setup_mariadb.py`를 실행합니다.
+
+## 센서가 도착하면
+
+1. `start_public.bat`를 실행합니다.
+2. 관리자에서 화장실별로 서로 다른 장치 ID를 등록하고 각각의 토큰을 보관합니다.
+3. `firmware/include/secrets.example.h`를 `secrets.h`로 복사해 Wi-Fi, 공개 HTTPS `API_BASE`, 장치별 ID·토큰, 서버 인증서를 검증할 `ROOT_CA`를 설정합니다.
+4. 각 기기에 펌웨어를 빌드·업로드하고 수신·방향·설치 위치를 검증합니다.
+
+실행 파일만 누른다고 기기 설정이나 펌웨어 업로드가 자동으로 되지는 않습니다. [하드웨어 안내](docs/HARDWARE.md)와 [실물 검증 항목](docs/VALIDATION.md)을 확인하세요.
+
+## 서버를 구매하면
+
+`deploy/`에 **Ubuntu 24.04 VPS 한 대**용 설치·실행·HTTPS·DB 영구 저장·자동 재시작·매일 백업·복원 구성을 준비했습니다. 지금 실행할 필요는 없습니다.
+
+서버를 구매한 뒤에는 소스를 `/opt/restflow`에 놓고 실제 도메인·이메일·관리자 비밀번호를 설정해 적용합니다. 서버에서는 Windows BAT 대신 Docker Compose가 실제 센서 모드로 실행됩니다. PC DB는 자동 이전되지 않으므로 필요하면 백업·복원합니다.
+
+**[서버 구매 후 적용 안내](docs/배포준비.md)**에 설치 순서와 확인 명령을 정리했습니다. 고정 주소를 유지하면 서버 재시작 후에도 기존 QR을 계속 사용할 수 있습니다.
+
+## 기능과 검증
+
+- 방문객 지도·시설 선택·혼잡 단계·수신 상태, 5초 갱신.
+- 관리자 로그인·비밀번호 변경, 시설 추가·삭제, 지도 업로드·위치 편집, 장치 등록, 통행 추이.
+- 장치별 토큰, 부팅 ID+순번 중복 방지, 발생시각 검증, MariaDB 영구 저장.
+- QR 공개 주소 자동 연결, PNG/SVG 다운로드, live/demo DB 분리.
+- Python 테스트 **52개**, 컨테이너 HTTPS·재시작 후 데이터 보존·SQL 백업/복원 검증 완료. 실제 센서와 구매한 VPS 검증은 별도입니다.
+
+[현재 검증 기록](docs/VALIDATION.md) · [QR·배포 검증 상세](docs/QR_VALIDATION.md) · [시연 순서](docs/DEMO.md) · [API·구조](docs/ARCHITECTURE.md)
+
+개발 검사는 MariaDB 및 시험 DB 생성·삭제 권한이 있는 환경에서 실행합니다. 실사용 DB와 분리된 `_test`, `_launcher_test` DB를 사용합니다.
+
+```text
+python -m unittest discover -s tests -v
+node --check web/app.js
 ```
 
-DB 설정을 다시 하려면 서버를 종료한 뒤 다음을 실행합니다.
-
-```powershell
-.\.venv\Scripts\python.exe setup_mariadb.py
-```
-
-8000번 포트가 사용 중이면:
-
-```powershell
-.\.venv\Scripts\python.exe server.py --demo --port 8001
-```
-
-같은 Wi-Fi의 휴대폰에서 접속하려면:
-
-```powershell
-.\.venv\Scripts\python.exe server.py --demo --host 0.0.0.0
-```
-
-`ipconfig`에서 확인한 PC IPv4 주소로 `http://PC_IP:8000`에 접속하고 Windows 방화벽은 사설 네트워크만 허용합니다.
-
-## DB 계정에 생성 권한이 없는 경우
-
-MariaDB 관리자 계정으로 아래와 같이 DB와 전용 사용자를 먼저 만들 수 있습니다. 비밀번호는 반드시 변경하십시오.
-
-```sql
-CREATE DATABASE restflow CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE DATABASE restflow_demo CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'restflow_app'@'localhost' IDENTIFIED BY 'change-this-password';
-GRANT ALL PRIVILEGES ON restflow.* TO 'restflow_app'@'localhost';
-GRANT ALL PRIVILEGES ON restflow_demo.* TO 'restflow_app'@'localhost';
-FLUSH PRIVILEGES;
-```
-
-그 다음 `setup_mariadb.py`에서 `restflow_app` 계정을 입력합니다.
-
-## 환경변수 방식
-
-`db_config.json` 대신 다음 환경변수를 모두 설정할 수 있습니다.
-
-- `RESTFLOW_DB_HOST`
-- `RESTFLOW_DB_PORT`
-- `RESTFLOW_DB_USER`
-- `RESTFLOW_DB_PASSWORD`
-- `RESTFLOW_DB_DATABASE`
-- `RESTFLOW_DB_DEMO_DATABASE`
-
-`RESTFLOW_DB_CONFIG`으로 다른 JSON 설정 파일 경로를 지정할 수도 있습니다.
-
-## 시연 모드와 실제 센서 모드
-
-- `server.py --demo`: `demo_database`를 사용하고 세 가상 화장실과 시연 통행 이벤트를 제공합니다.
-- `server.py`: `database`를 사용하며 관리자 화면에서 실제 장치를 등록해야 합니다.
-
-실제 장치 연결 절차:
-
-1. 관리자 화면에서 화장실별 장치 ID를 등록하고 한 번 표시되는 토큰을 보관합니다.
-2. `firmware/include/secrets.example.h`를 `secrets.h`로 복사합니다.
-3. Wi-Fi, HTTPS API 주소, 장치 ID, 장치 토큰, 인증서 정보를 입력합니다.
-4. PlatformIO로 펌웨어를 빌드하고 ATOM Lite에 업로드합니다.
-
-임시 public 실행은 매번 주소가 바뀝니다. 재실행 후에는 기기의 `API_BASE`도 새 주소로 바꾸고 다시 업로드해야 합니다. QR 기능은 기기의 Wi-Fi·토큰·인증서를 자동 설정하지 않습니다.
-
-ESP32 전체 빌드와 실물 센서 정확도·배터리 시간·현장 Wi-Fi는 아직 검증되지 않았습니다.
-
-## MariaDB 테이블
-
-- `toilets`: 화장실 이름, 운영 칸 수, 지도 위치, 활성 상태
-- `devices`: 장치 ID, 화장실 연결, 토큰 해시, 마지막 수신, 품질
-- `sessions`: 장치 부팅 ID별 마지막 순번
-- `events`: 입·퇴장 방향, 발생·수신 시각, 중복방지 키
-- `settings`: 지도와 방문자 URL
-- `audit`: 장치 등록과 관리 이력
-- `admin_credentials`: 관리자 비밀번호 salt/hash
-- `admin_sessions`: 관리자 로그인 세션
-
-## 검증
-
-MariaDB 서비스와 `db_config.json`이 준비된 상태에서:
-
-```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
-```
-
-테스트는 실사용 DB와 분리된 `_test` 및 `_launcher_test` DB를 만들고 종료 시 삭제합니다. DB 생성/삭제 권한이 필요합니다. 현재 검증은 52개 Python 테스트 통과 및 실제 컨테이너 HTTPS·재시작·백업/복원 확인까지입니다. 첨부 원본의 검증 기록은 MariaDB 12.0.2 기준입니다. QR 및 배포 준비의 검증 범위는 [QR 검증 기록](docs/QR_VALIDATION.md)에 별도로 기록합니다.
-
-## 운영 주의
-
-현재 서버는 소규모 수업 시제품입니다. deploy/에 HTTPS 프록시와 DB 백업·복원을 준비했으며, 실제 서버 적용과 확인은 구매 후 진행합니다. 대규모/장기간 운영의 로그인 시도 제한, 이벤트 보관 정책, 모니터링은 추가 검토가 필요합니다. MariaDB 접속 포트를 인터넷에 직접 공개하지 마십시오.
+환경변수 또는 `RESTFLOW_DB_CONFIG`으로 DB 설정을 지정할 수 있습니다. 배포에서는 비밀번호를 파일로 전달하며 기존에 변경한 관리자 비밀번호를 덮어쓰지 않습니다. 상세 설정은 [구조 문서](docs/ARCHITECTURE.md)에 있습니다. GitHub Actions에서도 동일한 Python 검사와 JS/Shell/C++ 검사를 실행합니다.
