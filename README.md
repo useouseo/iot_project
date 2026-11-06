@@ -7,7 +7,7 @@ ATOM Lite + VL53L1X → HTTPS 이벤트 수신 → MariaDB → 방문객 지도�
 - **센서 2대는 아직 미도착**: 실제 기기 연결·정확도 시험은 남아 있습니다.
 - **유료 서버는 아직 미구매**: 배포용 설정을 준비했으며 실제 구매·배포는 하지 않았습니다.
 - **PC에서 휴대폰 QR 외부 접속은 확인**했습니다.
-- 이 기본 브랜치가 최신 준비본입니다. [ZIP 다운로드](https://github.com/useouseo/iot_project/archive/refs/heads/codex-mariadb-public-qr-20261106.zip)
+- 이 기본 브랜치가 최신 준비본입니다. [ZIP 다운로드](https://github.com/useouseo/iot_project/archive/HEAD.zip)
 
 ## 지금 실행하는 방법
 
