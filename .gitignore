@@ -1,6 +1,7 @@
 .runtime/
 __pycache__/
 .venv/
+db_config.json
 firmware/.pio/
 firmware/include/secrets.h
 *.sqlite3*
