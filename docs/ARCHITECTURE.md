@@ -7,7 +7,7 @@ flowchart LR
   A[VL53L1X: A/B ROI 순차 측정] --> B[ATOM Lite: 방향 상태 전이]
   B --> C[NVS 재전송 대기열]
   C -->|Wi-Fi · HTTPS · 장치 토큰| D[Python HTTP API]
-  D --> E[(SQLite WAL)]
+  D --> E[(MariaDB · InnoDB)]
   E --> F[최근 10분 혼잡도 계산]
   F --> G[방문객 지도 · 5초 폴링]
   E --> H[관리자: 설정·장치·통행 추이]
@@ -37,7 +37,7 @@ flowchart LR
 | settings | 업로드 지도(data URI) |
 | audit | 장치 등록·계산 초기화 이력 |
 
-한 HTTP 요청당 DB 연결, WAL, 이벤트 쓰기에 BEGIN IMMEDIATE. 동일 이벤트 키의 동일 내용은 200/duplicate로 응답한다. 키가 같고 내용이 다르면 409, 새 키의 순번 역전도 409. 부팅 ID가 달라지면 순번 1부터 가능하며 이전 부팅 대기열도 재전송할 수 있다. 장치 시계는 UTC Unix 초, 30초 초과 미래/24시간 초과 과거는 400. 원본 이벤트 자동 삭제 정책은 현재 없으므로 긴 행사 운영 시 보관·백업 정책을 설정한다.
+한 HTTP 요청마다 MariaDB 연결과 트랜잭션을 열고 성공 시 commit, 오류 시 rollback한 뒤 cursor와 connection을 닫는다. 이벤트 수신은 장치 행을 `FOR UPDATE`로 잠가 같은 장치의 동시 요청을 직렬화하고 `(device_id, boot_id, seq)` UNIQUE 키로 중복 저장을 방지한다. 동일 이벤트 키의 동일 내용은 200/duplicate로 응답한다. 키가 같고 내용이 다르면 409, 새 키의 순번 역전도 409. 부팅 ID가 달라지면 순번 1부터 가능하며 이전 부팅 대기열도 재전송할 수 있다. 장치 시계는 UTC Unix 초, 30초 초과 미래/24시간 초과 과거는 400. 원본 이벤트 자동 삭제 정책은 현재 없으므로 긴 행사 운영 시 보관·백업 정책을 설정한다.
 
 ## HTTP API
 
@@ -79,6 +79,14 @@ flowchart LR
 
 ## 실행 범위
 
-현재는 소규모 시제품용 단일 프로세스 Python ThreadingHTTPServer+SQLite다. 실제 행사 공개 운영 전 HTTPS 종단, 요청 제한, 관리자 계정 확장·로그인 시도 제한, 모니터링·DB 백업, 운영 로그·보관 정책을 별도 배치한다. 역사적 혼잡 단계 스냅샷·설정 변경 이력 전체는 구현하지 않았고 현재 추이 화면은 **원본 통행량**이다. 실사용 초기 예시 시설은 두 곳이지만 추가·삭제로 개수를 자유롭게 바꿀 수 있다. 삭제는 active=0으로 보관해 이벤트 FK를 유지하며 해당 장치의 인증을 거부한다. 기존 DB는 active 열과 인증 테이블을 자동 추가하고 기존 설정·이벤트는 유지한다.
+현재는 소규모 시제품용 단일 프로세스 Python ThreadingHTTPServer와 별도 MariaDB 서버 구조다. 실사용과 시연은 각각 `database`, `demo_database`로 분리한다. 실제 행사 공개 운영 전 HTTPS 종단, 요청 제한, 관리자 계정 확장·로그인 시도 제한, 모니터링·MariaDB 백업, 운영 로그·보관 정책을 별도 배치한다. 역사적 혼잡 단계 스냅샷·설정 변경 이력 전체는 구현하지 않았고 현재 추이 화면은 **원본 통행량**이다. 실사용 초기 예시 시설은 두 곳이지만 추가·삭제로 개수를 자유롭게 바꿀 수 있다. 삭제는 active=0으로 보관해 이벤트 FK를 유지하며 해당 장치의 인증을 거부한다.
 
 관리자 지도는 Pointer Events로 마우스/터치 드래그와 취소를 지원하고, 이동 초안은 저장 전까지 클라이언트에 유지한다. 좌표는 기존과 동일한 3~97% 정수 범위다. 방문객에게는 서버에 저장된 좌표만 제공한다. QR의 SVG는 서버에서 생성하고, PNG는 브라우저에서 흰 배경의 1024×1024 이미지로 변환해 다운로드한다. 이미지 파일을 서버 디스크에 쓰지 않는다.
+
+
+## MariaDB QR 자동 연결 변경
+
+- `POST /api/qr`: 관리자 세션 필요. 서버 public_url을 우선 사용해 SVG와 URL을 반환합니다. 없으면 브라우저 origin을 사용하되 로컬/사설 IP를 거부합니다. 기존 GET QR/수동 URL 저장 API는 호환성을 위해 유지합니다.
+- `GET /api/admin`: `automatic_visitor_url`을 추가합니다.
+- `tools/public_start.py`: MariaDB 설정을 재사용하고 기본 live Store를 만든 뒤 초기 관리자 비밀번호를 변경하고 서버를 바인딩합니다. Quick Tunnel URL을 받으면 server.public_url을 설정합니다. 종료 시 터널과 HTTP 서버를 닫으며 DB 데이터는 삭제하지 않습니다.
+- `start_public_demo.bat`는 동일 실행기에 --demo를 전달합니다.
