@@ -41,7 +41,6 @@ ATOM Lite + VL53L1X가 입·퇴장 이벤트를 Wi-Fi로 전송하고, Python �
 |---|---|---|
 | `start_public.bat` | 실제 기기 연결 + 외부 QR 접속 | `database` (기본 `restflow`) |
 | `start_public_demo.bat` | 가상 데이터 + 외부 QR 접속 | `demo_database` (기본 `restflow_demo`) |
-| `start_demo.bat` | 기존 PC 로컬 가상 데이터 시연 | `demo_database` |
 
 상세 절차와 문제 해결은 [QR 시작 안내](QR_시작안내.txt)를 확인하세요.
 
