@@ -163,7 +163,7 @@ async function checkBackend(){
 async function showAdmin(){
   await checkBackend();
   const settings=await api('/api/admin');authenticated=true;
-  $('visitor-url').value=settings.visitor_url||location.origin;updateQrHint();
+  $('visitor-url').value=settings.automatic_visitor_url||location.origin;updateQrHint();
   $('admin-password').value='';$('login-panel').hidden=true;$('workspace').hidden=false;$('admin-panel').hidden=false;
   await refresh();fillForm();
 }
@@ -231,21 +231,16 @@ $('map-upload').addEventListener('change',()=>action(async()=>{
 $('reset').addEventListener('click',()=>{if(confirm('선택한 화장실의 현재 혼잡도 계산 구간을 초기화할까요? 원본 통행 기록은 유지됩니다.'))action(async()=>{await api('/api/reset','POST',{toilet_id:selected});notice('계산 구간을 초기화했습니다.');await refresh();});});
 $('simulate').addEventListener('click',()=>action(async()=>{await api('/api/demo','POST',{});notice('시연 통행 데이터를 추가했습니다.');await refresh();}));
 function updateQrHint() {
-  let local=false;
-  try{local=['localhost','127.0.0.1','[::1]'].includes(new URL($('visitor-url').value).hostname);}catch{}
-  $('qr-url-hint').textContent=local?'이 주소는 현재 PC에서만 접속할 수 있습니다. 휴대폰용으로는 PC의 내부 IP 주소 또는 공개 서버 주소를 입력하세요.':'방문객 휴대폰에서도 접속 가능한 주소를 입력하세요. 주소를 입력하는 것만으로 서버가 공개되지는 않습니다.';
+  $('qr-url-hint').textContent='접속 주소를 자동으로 사용합니다. 외부 접속 실행 창을 켜둔 동안 Wi-Fi·LTE·5G에서 사용할 수 있습니다.';
 }
 function dataUrl(blob) {
   return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('QR 이미지를 읽지 못했습니다'));reader.readAsDataURL(blob);});
 }
-$('visitor-url').addEventListener('input',()=>{updateQrHint();$('qr-result').hidden=true;});
 $('qr-form').addEventListener('submit',e=>{e.preventDefault();action(async()=>{
   const button=$('qr-button');button.disabled=true;$('qr-result').hidden=true;
   try{
-    const saved=await api('/api/visitor-url','PUT',{url:$('visitor-url').value.trim()});
-    const response=await fetch('/api/qr.svg',{signal:AbortSignal.timeout(8000)});
-    if(!response.ok){const error=await response.json();throw new Error(error.error);}
-    const svg=await dataUrl(await response.blob()),image=new Image();image.src=svg;await image.decode();
+    const saved=await api('/api/qr','POST',{url:location.origin+'/'});
+    const svg=await dataUrl(new Blob([saved.svg],{type:'image/svg+xml'})),image=new Image();image.src=svg;await image.decode();
     const canvas=document.createElement('canvas');canvas.width=canvas.height=1024;
     const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,1024,1024);ctx.drawImage(image,0,0,1024,1024);
     $('qr-image').src=svg;$('qr-destination').textContent=saved.url;
