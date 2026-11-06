@@ -11,7 +11,7 @@ from urllib.request import Request, urlopen
 from urllib.error import URLError
 
 import mariadb
-from server import Store, load_db_config, database_name
+from server import Store, load_db_config, database_name, bootstrap_admin
 from tools import public_start
 
 
@@ -38,6 +38,17 @@ class PublicLauncherTests(unittest.TestCase):
             for key in ('database','demo_database'):cur.execute(f"DROP DATABASE IF EXISTS `{cls.config[key]}`")
             db.commit();cur.close()
         finally:db.close()
+
+    def test_server_bootstrap_changes_default_and_keeps_existing_password(self):
+        store=Store(self.config,False,reset_schema=True)
+        with patch.dict('os.environ',{'RESTFLOW_INITIAL_ADMIN_PASSWORD':'first-server-password'},clear=True):
+            bootstrap_admin(store)
+        session=store.login('first-server-password');store.logout(session)
+        with patch.dict('os.environ',{'RESTFLOW_INITIAL_ADMIN_PASSWORD':'different-password'},clear=True):
+            bootstrap_admin(store)
+        session=store.login('first-server-password');store.logout(session)
+        with store.connect() as db:
+            self.assertEqual(db.execute('SELECT count(*) AS n FROM admin_sessions').fetchone()['n'],0)
 
     def test_url_parser_accepts_only_expected_tunnel_hostname(self):
         self.assertEqual(public_start.tunnel_url('Visit https://clear-river-123.trycloudflare.com now'),
