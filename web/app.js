@@ -158,7 +158,7 @@ function loggedOut(message='로그아웃했습니다.') {
 }
 async function checkBackend(){
   const health=await api('/api/health');
-  if(health.auth_mode!=='password')throw new Error('이전 서버가 실행 중입니다. 기존 서버 창에서 Ctrl+C로 종료한 뒤, 수정한 폴더의 start_demo.bat를 다시 실행하고 브라우저에서 Ctrl+F5를 누르세요.');
+  if(health.auth_mode!=='password')throw new Error('이전 서버가 실행 중입니다. 기존 서버 창에서 Ctrl+C로 종료한 뒤, 수정한 폴더의 start_public.bat를 다시 실행하고 브라우저에서 Ctrl+F5를 누르세요.');
 }
 async function showAdmin(){
   await checkBackend();
@@ -231,7 +231,7 @@ $('map-upload').addEventListener('change',()=>action(async()=>{
 $('reset').addEventListener('click',()=>{if(confirm('선택한 화장실의 현재 혼잡도 계산 구간을 초기화할까요? 원본 통행 기록은 유지됩니다.'))action(async()=>{await api('/api/reset','POST',{toilet_id:selected});notice('계산 구간을 초기화했습니다.');await refresh();});});
 $('simulate').addEventListener('click',()=>action(async()=>{await api('/api/demo','POST',{});notice('시연 통행 데이터를 추가했습니다.');await refresh();}));
 function updateQrHint() {
-  $('qr-url-hint').textContent='접속 주소를 자동으로 사용합니다. 외부 접속 실행 창을 켜둔 동안 Wi-Fi·LTE·5G에서 사용할 수 있습니다.';
+  $('qr-url-hint').textContent='공개 접속 주소를 자동으로 사용합니다. PC와 외부 접속 실행 창을 켜두면 Wi-Fi·LTE·5G에서 사용할 수 있습니다.';
 }
 function dataUrl(blob) {
   return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('QR 이미지를 읽지 못했습니다'));reader.readAsDataURL(blob);});

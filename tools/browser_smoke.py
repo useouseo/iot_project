@@ -1,4 +1,4 @@
-"""Real Chromium checks against a disposable demo DB and HTTP server."""
+"""Real Chromium checks against a disposable MariaDB and HTTP server."""
 from pathlib import Path
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
@@ -7,12 +7,18 @@ import shutil
 import re
 import threading
 from playwright.sync_api import sync_playwright, expect
-from server import Store,make_server
+import mariadb
+from server import Store,make_server,load_db_config,database_name
 
 root=Path(__file__).resolve().parents[1]
 shots=root/'docs'/'screenshots';shots.mkdir(exist_ok=True)
+config=load_db_config()
+config['demo_database']=database_name(config['demo_database']+'_browser_test')
+admin=mariadb.connect(**{key:config[key] for key in ('host','port','user','password')})
+cursor=admin.cursor();cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{config['demo_database']}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
+admin.commit();cursor.close();admin.close()
 with tempfile.TemporaryDirectory() as folder:
-    server=make_server('127.0.0.1',0,Store(Path(folder)/'demo.sqlite3',True))
+    server=make_server('127.0.0.1',0,Store(config,True,True))
     worker=threading.Thread(target=server.serve_forever,daemon=True);worker.start()
     try:
         with sync_playwright() as p:
@@ -120,3 +126,6 @@ with tempfile.TemporaryDirectory() as folder:
         print('Browser PASS: visitor, selection, mobile overflow, password login/change/logout, facility add/delete/empty/re-add, drag/undo/keyboard/cancel/polling, touch drag, map upload, QR PNG/SVG downloads, server failure; screenshots saved.')
     finally:
         server.shutdown();server.server_close();worker.join()
+        admin=mariadb.connect(**{key:config[key] for key in ('host','port','user','password')})
+        cursor=admin.cursor();cursor.execute(f"DROP DATABASE IF EXISTS `{config['demo_database']}`")
+        admin.commit();cursor.close();admin.close()

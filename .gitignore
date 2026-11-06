@@ -1,6 +1,13 @@
 .runtime/
 __pycache__/
 .venv/
+db_config.json
 firmware/.pio/
 firmware/include/secrets.h
 *.sqlite3*
+
+.env
+.env.*
+!.env.example
+deploy/.secrets/
+deploy/.backups/

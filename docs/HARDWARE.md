@@ -1,6 +1,6 @@
 # 부품 검토 및 현장 설치
 
-근거: 사용자가 제공한 `20261102_장바구니목록 (2).xls`(실제 형식은 HTML 표), `4조_IOT 시스템 개발 계획서_주제수정.pdf` 및 구상 이미지. 문서는 요구사항·가격 자료로 읽었으며 문서 안의 팀별 업무 배정은 별도 실행 명령으로 취급하지 않았다.
+현재 센서 2대는 미도착입니다. 아래 부품·설치 내용은 기존 프로젝트의 두 세트 구성 자료를 정리한 것으로, 실물 확인이나 현재 판매 가격을 검증한 결과가 아닙니다. 수량·배선·ROI 시작값은 실제 부품이 도착하면 확인해야 합니다. 가격표는 기존 자료의 참고값입니다.
 
 ## 구매 목록
 
@@ -50,11 +50,13 @@ Grove 케이블의 색깔만 믿지 말고 양쪽 기판 라벨을 확인한다.
 
 `firmware/include/secrets.example.h`를 `secrets.h`로 복사하고 Wi-Fi, HTTPS API_BASE, 등록한 DEVICE_ID/DEVICE_TOKEN, 서버의 신뢰 루트 CA를 설정한다. 예제 값으로는 현장에 연결되지 않는다. `secrets.h`는 Git에서 제외했다. HTTPS 검증을 끄는 옵션은 없다.
 
+PlatformIO가 설치된 프로젝트 루트 터미널에서 실행합니다. 현재 전체 펌웨어 빌드·실물 업로드는 미검증입니다.
+
 ```sh
-cd /workspace/iot_project/firmware
-PLATFORMIO_CORE_DIR=/workspace/.platformio /workspace/.venvs/iot/bin/pio run
-PLATFORMIO_CORE_DIR=/workspace/.platformio /workspace/.venvs/iot/bin/pio run --target upload
-PLATFORMIO_CORE_DIR=/workspace/.platformio /workspace/.venvs/iot/bin/pio device monitor
+cd firmware
+pio run
+pio run --target upload
+pio device monitor
 ```
 
 Wi-Fi/HTTP 전송은 별도 FreeRTOS 태스크로 센서 샘플링을 막지 않는다. NTP 동기화 전 통과는 시각을 꾸며 저장하지 않으며 품질 fault를 전송한다. 장치 네트워크는 NTP(UDP 123), DNS, HTTPS 서버를 허용해야 한다. 클라우드 개발 환경의 프록시 설정을 실물 ESP32에 복사하지 않는다.

@@ -1,0 +1,11 @@
+[Unit]
+Description=RestFlow MariaDB backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+TimeoutStartSec=300
+WorkingDirectory=/opt/restflow/deploy
+ExecStart=/usr/bin/bash /opt/restflow/deploy/backup.sh
+UMask=0077

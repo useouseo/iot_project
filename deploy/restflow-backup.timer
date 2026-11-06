@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily RestFlow backup at 03:00 Asia/Seoul
+
+[Timer]
+OnCalendar=*-*-* 18:00:00 UTC
+Persistent=true
+Unit=restflow-backup.service
+
+[Install]
+WantedBy=timers.target
