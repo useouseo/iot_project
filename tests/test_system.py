@@ -11,16 +11,48 @@ import unittest
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from server import Store, Problem, make_server, visitor_url
+import mariadb
+
+from server import Store, Problem, make_server, visitor_url, load_db_config, database_name
+
+
+def test_config():
+    config=load_db_config(os.environ.get('RESTFLOW_TEST_DB_CONFIG'))
+    config['database']=os.environ.get('RESTFLOW_TEST_DB_DATABASE',config['database']+'_test')
+    config['demo_database']=os.environ.get('RESTFLOW_TEST_DB_DEMO_DATABASE',config['demo_database']+'_test')
+    database_name(config['database']);database_name(config['demo_database'])
+    if config['database'] in (load_db_config(os.environ.get('RESTFLOW_TEST_DB_CONFIG'))['database'],load_db_config(os.environ.get('RESTFLOW_TEST_DB_CONFIG'))['demo_database']):
+        raise RuntimeError('테스트 DB 이름은 실사용/시연 DB 이름과 달라야 합니다')
+    return config
+
+
+TEST_CONFIG=test_config()
+
+
+def prepare_test_databases():
+    db=mariadb.connect(**{key:TEST_CONFIG[key] for key in ('host','port','user','password')})
+    cur=db.cursor()
+    for name in (TEST_CONFIG['database'],TEST_CONFIG['demo_database']):
+        cur.execute(f'CREATE DATABASE IF NOT EXISTS `{name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci')
+    db.commit();cur.close();db.close()
+
+
+prepare_test_databases()
+
+
+def tearDownModule():
+    db=mariadb.connect(**{key:TEST_CONFIG[key] for key in ('host','port','user','password')})
+    cur=db.cursor()
+    for name in (TEST_CONFIG['database'],TEST_CONFIG['demo_database']):
+        cur.execute(f'DROP DATABASE IF EXISTS `{name}`')
+    db.commit();cur.close();db.close()
 
 class SystemTests(unittest.TestCase):
     def setUp(self):
-        self.temp=tempfile.TemporaryDirectory()
-        self.db=Store(Path(self.temp.name)/'test.sqlite3')
+        self.db=Store(TEST_CONFIG,reset_schema=True)
         self.device=self.db.register({'id':'atom-a','toilet_id':1})
         self.token=self.device['token']
         self.now=time.time()
-    def tearDown(self):self.temp.cleanup()
     def event(self,seq=1,direction='in',at=None,boot='boot-1'):
         return dict(device_id='atom-a',boot_id=boot,seq=seq,direction=direction,occurred_at=self.now if at is None else at)
     def send(self,e=None,token=None):return self.db.ingest(e or self.event(),self.token if token is None else token,now=self.now)
@@ -77,7 +109,7 @@ class SystemTests(unittest.TestCase):
         self.assertEqual(sum(r['in'] for r in self.db.history(1,self.now+2)),1)
     def test_config_persistence(self):
         self.db.update(1,dict(name='동문 화장실',stalls=6,x=30,y=50))
-        reloaded=Store(self.db.path)
+        reloaded=Store(TEST_CONFIG)
         self.assertEqual(reloaded.snapshot()['toilets'][0]['stalls'],6)
     def test_settings_validation(self):
         for bad in ({'stalls':0},{'x':101},{'name':''},{'y':False}):
@@ -97,38 +129,33 @@ class SystemTests(unittest.TestCase):
 
 class FacilityLifecycleTests(unittest.TestCase):
     def test_delete_all_stays_empty_after_restart_and_can_add(self):
-        with tempfile.TemporaryDirectory() as folder:
-            path=Path(folder)/'state.sqlite3';db=Store(path,True)
-            for t in db.snapshot()['toilets']:db.delete(t['id'])
-            reloaded=Store(path,True)
-            self.assertEqual(reloaded.snapshot()['toilets'],[])
-            new=reloaded.create({'name':'새 출입구','stalls':5})
-            self.assertGreater(new['id'],3)
-            self.assertEqual(len(reloaded.snapshot()['toilets']),1)
-            self.assertEqual(len(reloaded.all_devices()),1)
+        db=Store(TEST_CONFIG,True,True)
+        for t in db.snapshot()['toilets']:db.delete(t['id'])
+        reloaded=Store(TEST_CONFIG,True)
+        self.assertEqual(reloaded.snapshot()['toilets'],[])
+        new=reloaded.create({'name':'새 출입구','stalls':5})
+        self.assertGreater(new['id'],3)
+        self.assertEqual(len(reloaded.snapshot()['toilets']),1)
+        self.assertEqual(len(reloaded.all_devices()),1)
     def test_more_than_three_facilities_and_preserved_records(self):
-        with tempfile.TemporaryDirectory() as folder:
-            db=Store(Path(folder)/'state.sqlite3',True)
-            for i in range(30):db.create({'name':f'화장실 {i+4}','stalls':4})
-            self.assertEqual(len(db.snapshot()['toilets']),33)
-            with db.connect() as conn:before=conn.execute('SELECT count(*) FROM events').fetchone()[0]
-            db.delete(1)
-            with db.connect() as conn:self.assertEqual(conn.execute('SELECT count(*) FROM events').fetchone()[0],before)
-    def test_existing_database_schema_is_migrated_without_losing_settings(self):
-        import sqlite3
-        with tempfile.TemporaryDirectory() as folder:
-            path=Path(folder)/'old.sqlite3'
-            with sqlite3.connect(path) as conn:
-                conn.executescript("CREATE TABLE toilets(id INTEGER PRIMARY KEY,name TEXT NOT NULL,stalls INTEGER NOT NULL,x INTEGER NOT NULL,y INTEGER NOT NULL,reset_at REAL NOT NULL DEFAULT 0);INSERT INTO toilets VALUES(9,'기존 시설',7,40,50,0);CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);INSERT INTO settings VALUES('visitor_url','https://old.example.org');")
-            db=Store(path)
-            self.assertEqual(db.snapshot()['toilets'][0]['name'],'기존 시설')
-            self.assertEqual(db.snapshot()['settings']['visitor_url'],'https://old.example.org')
-            self.assertTrue(db.session_valid(db.login('1234')))
+        db=Store(TEST_CONFIG,True,True)
+        for i in range(30):db.create({'name':f'화장실 {i+4}','stalls':4})
+        self.assertEqual(len(db.snapshot()['toilets']),33)
+        with db.connect() as conn:before=conn.execute('SELECT count(*) AS n FROM events').fetchone()['n']
+        db.delete(1)
+        with db.connect() as conn:self.assertEqual(conn.execute('SELECT count(*) AS n FROM events').fetchone()['n'],before)
+    def test_existing_mariadb_data_is_preserved_on_restart(self):
+        db=Store(TEST_CONFIG,False,True)
+        with db.connect() as conn:
+            conn.execute("INSERT INTO settings VALUES('visitor_url',?)",('https://old.example.org',))
+        reloaded=Store(TEST_CONFIG)
+        self.assertEqual(reloaded.snapshot()['settings']['visitor_url'],'https://old.example.org')
+        self.assertTrue(reloaded.session_valid(reloaded.login('1234')))
 
 class HTTPTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.temp=tempfile.TemporaryDirectory();cls.db=Store(Path(cls.temp.name)/'http.sqlite3')
+        cls.temp=tempfile.TemporaryDirectory();cls.db=Store(TEST_CONFIG,reset_schema=True)
         cls.server=make_server('127.0.0.1',0,cls.db,'https://event.example.org')
         cls.thread=threading.Thread(target=cls.server.serve_forever,daemon=True);cls.thread.start()
         cls.base=f'http://127.0.0.1:{cls.server.server_port}'
@@ -189,15 +216,15 @@ class HTTPTests(unittest.TestCase):
 
     def test_automatic_qr_uses_public_url_without_saving_input(self):
         with self.db.connect() as db:
-            before=db.execute("SELECT value FROM settings WHERE key='visitor_url'").fetchone()
+            before=db.execute("SELECT value FROM settings WHERE `key`='visitor_url'").fetchone()
         status,body,_=self.request('/api/qr','POST',{'url':'http://localhost:8000/'},'integration-test-admin-token')
         self.assertEqual(status,200)
         result=json.loads(body)
         self.assertEqual(result['url'],'https://event.example.org')
         self.assertIn('<svg',result['svg'])
         with self.db.connect() as db:
-            after=db.execute("SELECT value FROM settings WHERE key='visitor_url'").fetchone()
-        self.assertEqual(tuple(before) if before else None,tuple(after) if after else None)
+            after=db.execute("SELECT value FROM settings WHERE `key`='visitor_url'").fetchone()
+        self.assertEqual(dict(before) if before else None,dict(after) if after else None)
 
     def test_automatic_qr_browser_origin_fallback_and_local_rejection(self):
         original=self.server.public_url
@@ -218,7 +245,7 @@ class HTTPTests(unittest.TestCase):
         status,body,_=self.request('/api/visitor-url','PUT',{'url':target},'integration-test-admin-token')
         self.assertEqual(status,200)
         self.assertEqual(json.loads(self.request('/api/admin',token='integration-test-admin-token')[1])['visitor_url'],target)
-        with self.db.connect() as db:self.assertEqual(db.execute("SELECT value FROM settings WHERE key='visitor_url'").fetchone()[0],target)
+        with self.db.connect() as db:self.assertEqual(db.execute("SELECT value FROM settings WHERE `key`='visitor_url'").fetchone()['value'],target)
         status,svg,_=self.request('/api/qr.svg');self.assertEqual(status,200);self.assertIn(b'<svg',svg)
     def test_visitor_url_rejects_invalid_or_embedded_credentials(self):
         for target in ('javascript:alert(1)','file:///tmp/secret','https://user:password@example.org','https://','http://host:bad','https://example.org/has space','https://example.org/\nsecret'):
@@ -248,7 +275,7 @@ class HTTPTests(unittest.TestCase):
             self.assertEqual(self.request('/api/admin',cookie=self.cookie)[0],401)
             self.assertEqual(self.request('/api/admin',cookie=new_cookie)[0],200)
             self.assertEqual(self.request('/api/login','POST',{'password':'1234'})[0],401)
-            restored=Store(self.db.path)
+            restored=Store(TEST_CONFIG)
             self.assertTrue(restored.session_valid(restored.login('new-pass-5678')))
             public=self.request('/api/status')[1].decode()
             self.assertNotIn('new-pass-5678',public);self.assertNotIn('password_hash',public);self.assertNotIn('salt',public)
