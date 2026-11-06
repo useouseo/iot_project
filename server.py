@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import hmac
 import io
+import ipaddress
 import json
 import math
 import os
@@ -47,6 +48,28 @@ def visitor_url(value):
     except ValueError:
         raise Problem(400,'사용자명·비밀번호가 없는 올바른 http(s) 주소를 입력하세요')
     return value
+
+
+def automatic_qr_url(value):
+    value=visitor_url(value)
+    host=urlparse(value).hostname.lower().rstrip('.')
+    if host == 'localhost' or host.endswith(('.localhost','.local')):
+        raise Problem(409,'외부 접속 실행(start_public.bat)으로 실행한 관리자 화면에서 QR을 생성하세요')
+    try:
+        address=ipaddress.ip_address(host)
+    except ValueError:
+        address=None
+    if address is not None and not address.is_global:
+        raise Problem(409,'현재 주소는 외부에서 접속할 수 없습니다. start_public.bat로 실행하세요')
+    return value
+
+
+def qr_svg(url):
+    import qrcode
+    import qrcode.image.svg
+    img=qrcode.make(url,image_factory=qrcode.image.svg.SvgPathImage)
+    out=io.BytesIO();img.save(out)
+    return out.getvalue()
 
 
 def digest(token):
@@ -349,20 +372,16 @@ class App(BaseHTTPRequestHandler):
                     with store.connect() as db: db.execute('SELECT 1').fetchone()
                     return self.send(200,{'ok':True,'demo':store.demo,'auth_mode':'password','api_version':2})
                 if p=='/api/admin':
-                    self.admin();return self.send(200,{'devices':store.all_devices(),'visitor_url':self.qr_url()})
+                    self.admin();return self.send(200,{'devices':store.all_devices(),'visitor_url':self.qr_url(),'automatic_visitor_url':self.server.public_url})
                 if p=='/api/history':
                     self.admin()
                     try: tid=int(parse_qs(route.query).get('toilet_id',['1'])[0])
                     except ValueError: raise Problem(400,'잘못된 화장실 ID')
                     return self.send(200,store.history(tid))
                 if p=='/api/qr.svg':
-                    import qrcode
-                    import qrcode.image.svg
                     url=self.qr_url()
-                    if not url: raise Problem(409,'관리자 화면에서 방문객 접속 주소를 입력하고 QR을 생성하세요')
-                    img=qrcode.make(url,image_factory=qrcode.image.svg.SvgPathImage)
-                    out=io.BytesIO();img.save(out)
-                    return self.send(200,out.getvalue(),'image/svg+xml')
+                    if not url: raise Problem(409,'외부 접속 실행 후 관리자 화면에서 QR을 생성하세요')
+                    return self.send(200,qr_svg(url),'image/svg+xml')
                 allowed={'/':'index.html','/admin':'index.html','/app.js':'app.js','/style.css':'style.css','/map.svg':'map.svg'}
                 if p in allowed:
                     f=ROOT/'web'/allowed[p]
@@ -376,6 +395,9 @@ class App(BaseHTTPRequestHandler):
             if method=='POST' and p in ('/api/events','/api/heartbeat'):
                 return self.send(200,store.ingest(data,self.token(),p.endswith('heartbeat')))
             self.admin()
+            if method=='POST' and p=='/api/qr':
+                url=automatic_qr_url(self.server.public_url or data.get('url'))
+                return self.send(200,{'url':url,'svg':qr_svg(url).decode('utf-8')})
             if method=='POST' and p=='/api/logout':
                 store.logout(self.session_token())
                 return self.send(200,{'logged_out':True},headers=self.session_cookie('',True))
@@ -434,10 +456,17 @@ def main():
     p=argparse.ArgumentParser();p.add_argument('--host',default='127.0.0.1');p.add_argument('--port',type=int,default=8000)
     p.add_argument('--demo',action='store_true');p.add_argument('--db');args=p.parse_args()
     runtime=ROOT/'.runtime';runtime.mkdir(exist_ok=True)
-    url=os.environ.get('PUBLIC_URL','').rstrip('/')
+    url=os.environ.get('PUBLIC_URL',os.environ.get('RENDER_EXTERNAL_URL','')).rstrip('/')
     if url and (urlparse(url).scheme not in ('http','https') or not urlparse(url).netloc):
         raise SystemExit('PUBLIC_URL은 실제 접속 가능한 http(s) URL이어야 합니다')
     store=Store(args.db or runtime/('demo.sqlite3' if args.demo else 'live.sqlite3'),args.demo)
+    initial=os.environ.get('INITIAL_ADMIN_PASSWORD','')
+    if initial:
+        if len(initial)<8 or initial=='1234':raise SystemExit('INITIAL_ADMIN_PASSWORD는 8자 이상이어야 합니다')
+        with store.connect() as db:
+            row=db.execute('SELECT * FROM admin_credentials WHERE id=1').fetchone()
+        if hmac.compare_digest(row['password_hash'],password_hash('1234',row['salt'])):
+            token=store.change_password('1234',initial);store.logout(token)
     try:server=make_server(args.host,args.port,store,url)
     except OSError as error:
         raise SystemExit(f'서버를 시작하지 못했습니다 (포트 {args.port}). 이전 서버 창을 Ctrl+C로 종료한 뒤 다시 실행하세요. 오류 코드: {error.errno}')
