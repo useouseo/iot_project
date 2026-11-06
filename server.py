@@ -32,6 +32,14 @@ DB_ENV = {
 }
 
 
+def environment_secret(name):
+    path=os.environ.get(name+'_FILE')
+    if path:
+        try:return Path(path).read_text(encoding='utf-8').rstrip('\r\n')
+        except OSError:raise SystemExit(name+'_FILE 설정 파일을 읽지 못했습니다')
+    return os.environ.get(name)
+
+
 def database_name(value, field='database'):
     if not isinstance(value,str) or not re.fullmatch(r'[A-Za-z0-9_]{1,64}',value):
         raise ValueError(f'{field}는 영문, 숫자, 밑줄로 된 1~64자 이름이어야 합니다')
@@ -52,6 +60,8 @@ def load_db_config(path=None):
         config.update(value)
     for key,env_name in DB_ENV.items():
         if env_name in os.environ:config[key]=os.environ[env_name]
+    secret=environment_secret('RESTFLOW_DB_PASSWORD')
+    if secret is not None:config['password']=secret
     missing=[key for key in ('host','user','database','demo_database') if not config.get(key)]
     if missing:
         raise SystemExit('MariaDB 설정이 없습니다. 먼저 setup_mariadb.py를 실행하세요. 누락: '+', '.join(missing))
@@ -547,6 +557,17 @@ def make_server(host,port,store,public_url=''):
     return server
 
 
+def bootstrap_admin(store):
+    password=environment_secret('RESTFLOW_INITIAL_ADMIN_PASSWORD')
+    if password is None:return
+    if not 8<=len(password)<=128 or password=='1234':
+        raise SystemExit('초기 관리자 비밀번호는 8~128자로 설정하세요')
+    with store.connect() as db:
+        row=db.execute('SELECT * FROM admin_credentials WHERE id=1').fetchone()
+    if hmac.compare_digest(row['password_hash'],password_hash('1234',row['salt'])):
+        store.logout(store.change_password('1234',password))
+
+
 def main():
     p=argparse.ArgumentParser();p.add_argument('--host',default='127.0.0.1');p.add_argument('--port',type=int,default=8000)
     p.add_argument('--demo',action='store_true');p.add_argument('--db-config',default=os.environ.get('RESTFLOW_DB_CONFIG',str(DB_CONFIG_PATH)));args=p.parse_args()
@@ -557,6 +578,7 @@ def main():
     try:store=Store(config,args.demo)
     except mariadb.Error as error:
         raise SystemExit(f'MariaDB에 연결하지 못했습니다: {error}. MariaDB 서비스와 db_config.json을 확인하세요.')
+    bootstrap_admin(store)
     try:server=make_server(args.host,args.port,store,url)
     except OSError as error:
         raise SystemExit(f'서버를 시작하지 못했습니다 (포트 {args.port}). 이전 서버 창을 Ctrl+C로 종료한 뒤 다시 실행하세요. 오류 코드: {error.errno}')
