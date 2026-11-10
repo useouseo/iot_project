@@ -18,6 +18,20 @@ from urllib.parse import urlparse, parse_qs
 import mariadb
 
 ROOT = Path(__file__).resolve().parent
+
+def congestion_percent(score, healthy=True):
+    """Relative traffic index, not stall occupancy. 0/.8/2/4 -> 0/40/75/100."""
+    if not healthy or not isinstance(score, (int, float)) or not math.isfinite(score):
+        return None
+    score = max(0, score)
+    if score < .8:
+        value = score * 50
+    elif score < 2:
+        value = 40 + (score - .8) * 35 / 1.2
+    else:
+        value = 75 + (score - 2) * 12.5
+    return min(100, int(value + .5))
+
 WINDOW = 600
 OFFLINE = 120
 MAX_BODY = 2_800_000
@@ -368,7 +382,7 @@ class Store:
                 online = t['last_seen'] is not None and now-t['last_seen'] <= OFFLINE
                 healthy=online and t['quality']=='good'
                 level = ('busy' if score>=2 else 'moderate' if score>=.8 else 'quiet') if healthy else 'unknown'
-                t.update(level=level,online=online,score=round(score,2),entries=ins,exits=outs,previous_entries=prev)
+                t.update(level=level,online=online,congestion_percent=congestion_percent(score,healthy),score=round(score,2),entries=ins,exits=outs,previous_entries=prev)
                 result.append(t)
             settings={r['key']:r['value'] for r in db.execute("SELECT * FROM settings WHERE `key` IN ('map','visitor_url')")}
         return {'toilets':result,'updated_at':now,'window_seconds':WINDOW,'demo':self.demo,'settings':settings}
@@ -487,10 +501,10 @@ class App(BaseHTTPRequestHandler):
                     url=self.qr_url()
                     if not url:raise Problem(409,'start_public.bat 실행 후 관리자 화면에서 QR을 생성하세요')
                     return self.send(200,qr_svg(url),'image/svg+xml')
-                allowed={'/':'index.html','/admin':'index.html','/app.js':'app.js','/style.css':'style.css','/map.svg':'map.svg'}
+                allowed={'/':'index.html','/admin':'index.html','/app.js':'app.js','/style.css':'style.css','/map.svg':'map.svg','/pretendard.woff2':'pretendard.woff2'}
                 if p in allowed:
                     f=ROOT/'web'/allowed[p]
-                    types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml'}
+                    types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.woff2':'font/woff2'}
                     return self.send(200,f.read_bytes(),types[f.suffix])
                 raise Problem(404,'경로를 찾을 수 없습니다')
             data={} if method=='DELETE' else self.body()
