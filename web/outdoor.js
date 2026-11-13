@@ -74,7 +74,7 @@
       if(!config.map_key){message('TMAP 지도 설정이 필요합니다. 관리자가 지도 API 키를 설정하면 표시됩니다.');return;}
 
       sdk=window.Tmapv2;if(!sdk)throw Error('TMAP 지도 인증을 확인하세요.');
-      map=new sdk.Map('outdoor-map',{center:new sdk.LatLng(37.5665,126.978),width:'100%',height:'100%',zoom:15});
+      map=new sdk.Map('outdoor-map',{center:new sdk.LatLng(37.5665,126.978),width:'100%',height:getComputedStyle($('outdoor-map')).height,zoom:15});
       map.addListener('click',event=>{if(!editing||!current())return;$('geo-lat').value=event.latLng.lat();$('geo-lng').value=event.latLng.lng();message('입구 위치를 지정했습니다. 입구 위치 저장을 눌러주세요.');});
       message(routing?'화장실을 선택해 도보 경로를 확인하세요.':'지도는 준비되었습니다. 도보 길찾기 API 설정이 필요합니다.');if(data)update(data,selected,editing);
       if(location.pathname!=='/admin')locate();
