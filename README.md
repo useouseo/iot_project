@@ -1,4 +1,4 @@
-> **공간별 운영 통합 버전:** 상단 **목록 / 추가 / 삭제**에서 공간 이름과 실내·야외 유형을 정합니다. 설정에서 공간을 삭제할 수 있고, 각 공간은 독립 화장실·지도·센서·전용 QR을 사용하며, 기존 데이터는 **기존 공간**로 보존됩니다. [설정 및 업데이트 안내](docs/OUTDOOR.md)
+> **최신 버전: spaces-v1** · 공간별 실내·야외 운영, 독립 지도·화장실·센서·QR, 위치 저장 바 통일과 화면 정리를 반영했습니다. **[전체 변경 내용](docs/CHANGES-2026-11-13.md)** · **[공동 개발자 실행 방법](docs/TEAM_SETUP.md)** · [운영 안내](docs/OUTDOOR.md)
 
 > **2026-11-10 디자인 수정 버전:** 추천순·추정 혼잡도, 장치별 화장실 이름, 방문객 연결 정보 정리 등 기능 변경은 [변경 사항](docs/CHANGES-2026-11-10.md)을 참고하세요. [현재 화면 캡처](docs/screenshots/README.md)도 함께 갱신했습니다.
 
@@ -6,19 +6,22 @@
 
 ATOM Lite + VL53L1X → HTTPS 이벤트 수신 → MariaDB → 방문객 지도·관리자 화면으로 구성된 IoT 시제품입니다. 최근 10분 통행량으로 혼잡 단계를 추정하며, 정확한 내부 인원수나 대기시간을 표시하지 않습니다.
 
-**최종 준비본 · 2026-11-06**
+**하드웨어·배포 준비 기록 · 2026-11-06 기준**
 
 - **센서 2대는 아직 미도착**: 실제 기기 연결·정확도 시험은 남아 있습니다.
 - **유료 서버는 아직 미구매**: 배포용 설정을 준비했으며 실제 구매·배포는 하지 않았습니다.
 - **PC에서 휴대폰 QR 외부 접속은 확인**했습니다.
-- 이 기본 브랜치가 최신 준비본입니다. [ZIP 다운로드](https://github.com/useouseo/iot_project/archive/HEAD.zip)
+- 최신 공동 개발 버전은 `feature/outdoor-tmap-navigation` 브랜치입니다. [개발 버전 ZIP 다운로드](https://github.com/useouseo/iot_project/archive/refs/heads/feature/outdoor-tmap-navigation.zip)
 
 ## 지금 실행하는 방법
+
+처음 코드를 받은 공동 개발자는 **[공동 개발자 실행 방법](docs/TEAM_SETUP.md)**부터 확인하세요. 실제 TMAP 키는 카톡방에서 별도로 받고, DB 설정은 각자 PC에 맞게 입력합니다. 프로그램 파일만 공유하면 등록한 데이터는 함께 전달되지 않습니다.
 
 Windows에 **Python 3.12 64-bit와 MariaDB Server**가 필요합니다. MariaDB 서비스를 실행한 뒤 압축을 푼 폴더에서 아래 파일을 더블클릭합니다. CMD에 Python 명령어를 직접 입력할 필요는 없습니다.
 
 | 실행 파일 | 사용할 때 | DB 기본 이름 |
 |---|---|---|
+| **`start_with_tmap.bat`** | **TMAP 키를 한 번 설정한 뒤 더블클릭으로 시연 실행** | `restflow_demo` |
 | **`start_public_demo.bat`** | **지금: 센서 없이 가상 데이터로 QR 시연** | `restflow_demo` |
 | **`start_public.bat`** | **센서 도착 후: PC에서 실제 장치 데이터 수신 + QR 접속** | `restflow` |
 
