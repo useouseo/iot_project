@@ -14,6 +14,9 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from http.cookies import SimpleCookie, CookieError
 from urllib.parse import urlparse, parse_qs
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
+import threading
 
 import mariadb
 
@@ -192,6 +195,53 @@ def password_value(value):
     return value
 
 
+def geo_coordinate(value, low, high):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not low <= value <= high:
+        raise Problem(400, '유효한 위도·경도를 입력하세요')
+    return float(value)
+
+_route_slots = threading.BoundedSemaphore(4)
+_route_lock = threading.Lock()
+_route_next = 0.0
+
+def pedestrian_route(store, data):
+    key = environment_secret('RESTFLOW_TMAP_ROUTE_KEY')
+    if not key:
+        raise Problem(503, '도보 길찾기 API 설정이 필요합니다')
+    lat = geo_coordinate(data.get('latitude'), -90, 90)
+    lng = geo_coordinate(data.get('longitude'), -180, 180)
+    tid = integer(data.get('toilet_id'), 1, 2147483647, '화장실 ID')
+    target = next((t for t in store.snapshot()['toilets'] if t['id'] == tid), None)
+    if not target:
+        raise Problem(404, '화장실을 찾을 수 없습니다')
+    if target['latitude'] is None or target['longitude'] is None:
+        raise Problem(409, '화장실 입구 위치가 아직 등록되지 않았습니다')
+    body = dict(startX=lng, startY=lat, endX=target['longitude'], endY=target['latitude'],
+                reqCoordType='WGS84GEO', resCoordType='WGS84GEO', startName='출발지', endName='화장실 입구')
+    if not _route_slots.acquire(blocking=False):
+        raise Problem(429, '길찾기 요청이 많습니다. 잠시 후 다시 시도하세요')
+    global _route_next
+    try:
+        with _route_lock:
+            if time.monotonic() < _route_next:
+                raise Problem(429, '길찾기는 잠시 후 다시 시도하세요')
+            _route_next = time.monotonic() + 1
+        request = Request('https://apis.openapi.sk.com/tmap/routes/pedestrian?version=1',
+                          data=json.dumps(body).encode(), headers={'Content-Type':'application/json', 'appKey':key})
+        with urlopen(request, timeout=10) as response:
+            result = json.loads(response.read(2000000))
+        features = result.get('features', [])
+        lines = [f['geometry']['coordinates'] for f in features if f.get('geometry', {}).get('type') == 'LineString']
+        properties = next((f.get('properties', {}) for f in features if 'totalDistance' in f.get('properties', {})), {})
+        if not lines:
+            raise Problem(502, '이 구간의 도보 경로를 찾지 못했습니다')
+        return dict(lines=lines, distance=properties.get('totalDistance'), seconds=properties.get('totalTime'))
+    except (HTTPError, URLError, TimeoutError, ValueError, KeyError):
+        raise Problem(502, '길찾기 서비스에 연결하지 못했습니다. 잠시 후 다시 시도하세요')
+    finally:
+        _route_slots.release()
+
+
 class Store:
     TABLES=('events','sessions','admin_sessions','devices','settings','audit','admin_credentials','toilets')
     def __init__(self, config, demo=False, reset_schema=False):
@@ -237,6 +287,8 @@ class Store:
               token_hash CHAR(64) PRIMARY KEY, expires_at DOUBLE NOT NULL)
               ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci''')
             for statement in statements:db.execute(statement)
+            db.execute("ALTER TABLE toilets ADD COLUMN IF NOT EXISTS latitude DOUBLE NULL")
+            db.execute("ALTER TABLE toilets ADD COLUMN IF NOT EXISTS longitude DOUBLE NULL")
             if not db.execute('SELECT 1 FROM admin_credentials WHERE id=1').fetchone():
                 salt=secrets.token_hex(16)
                 db.execute('INSERT INTO admin_credentials VALUES(1,?,?)',(salt,password_hash('1234',salt)))
@@ -439,7 +491,7 @@ class App(BaseHTTPRequestHandler):
         self.send_header('Cache-Control','no-store')
         self.send_header('X-Content-Type-Options','nosniff')
         self.send_header('X-Frame-Options','DENY')
-        self.send_header('Content-Security-Policy',"default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'")
+        self.send_header('Content-Security-Policy',"default-src 'self'; img-src 'self' data: blob: https://*.sk.com https://*.tmap.co.kr https://*.sktmap.com; style-src 'self' 'unsafe-inline'; script-src 'self' https://*.sk.com https://*.tmap.co.kr https://*.sktmap.com; connect-src 'self' https://*.sk.com https://*.tmap.co.kr https://*.sktmap.com; worker-src blob:; frame-ancestors 'none'; base-uri 'none'")
         for key,value in (headers or {}).items():self.send_header(key,value)
         self.end_headers();self.wfile.write(body)
 
@@ -486,6 +538,7 @@ class App(BaseHTTPRequestHandler):
         try:
             route=urlparse(self.path);p=route.path;store=self.server.store
             if method=='GET':
+                if p=='/api/map-config': return self.send(200,{'map_key':environment_secret('RESTFLOW_TMAP_MAP_KEY') or '', 'routing':bool(environment_secret('RESTFLOW_TMAP_ROUTE_KEY'))})
                 if p=='/api/status': return self.send(200,store.snapshot())
                 if p=='/api/health':
                     with store.connect() as db: db.execute('SELECT 1').fetchone()
@@ -501,7 +554,7 @@ class App(BaseHTTPRequestHandler):
                     url=self.qr_url()
                     if not url:raise Problem(409,'start_public.bat 실행 후 관리자 화면에서 QR을 생성하세요')
                     return self.send(200,qr_svg(url),'image/svg+xml')
-                allowed={'/':'index.html','/admin':'index.html','/app.js':'app.js','/style.css':'style.css','/map.svg':'map.svg','/pretendard.woff2':'pretendard.woff2'}
+                allowed={'/outdoor.js':'outdoor.js','/outdoor.css':'outdoor.css','/':'index.html','/admin':'index.html','/app.js':'app.js','/style.css':'style.css','/map.svg':'map.svg','/pretendard.woff2':'pretendard.woff2'}
                 if p in allowed:
                     f=ROOT/'web'/allowed[p]
                     types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.woff2':'font/woff2'}
@@ -513,6 +566,7 @@ class App(BaseHTTPRequestHandler):
                 return self.send(200,{'authenticated':True},headers=self.session_cookie(session))
             if method=='POST' and p in ('/api/events','/api/heartbeat'):
                 return self.send(200,store.ingest(data,self.token(),p.endswith('heartbeat')))
+            if method=='POST' and p=='/api/route':return self.send(200,pedestrian_route(store,data))
             self.admin()
             if method=='POST' and p=='/api/qr':
                 url=automatic_qr_url(self.server.public_url or data.get('url'))
@@ -535,7 +589,17 @@ class App(BaseHTTPRequestHandler):
                 return self.send(200,{'saved':True,'url':url})
             if method=='POST' and p=='/api/devices':return self.send(201,store.register(data))
             if method=='POST' and p=='/api/demo':return self.send(200,store.simulate())
+            if method=='PUT' and re.fullmatch(r'/api/coordinates/[0-9]+',p):
+                tid=int(p.rsplit('/',1)[1])
+                lat=geo_coordinate(data.get('latitude'),-90,90)
+                lng=geo_coordinate(data.get('longitude'),-180,180)
+                with store.connect() as db:
+                    if not db.execute('SELECT 1 FROM toilets WHERE id=? AND active=1',(tid,)).fetchone():
+                        raise Problem(404,'화장실을 찾을 수 없습니다')
+                    db.execute('UPDATE toilets SET latitude=?,longitude=? WHERE id=?',(lat,lng,tid))
+                return self.send(200,{'saved':True})
             if method=='PUT' and p.startswith('/api/toilets/'):
+
                 try: tid=int(p.rsplit('/',1)[1])
                 except ValueError: raise Problem(400,'잘못된 화장실 ID')
                 return self.send(200,store.update(tid,data))
