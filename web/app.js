@@ -144,7 +144,7 @@ function markerLabel(index) { return index<26 ? String.fromCharCode(65+index) : 
 
 function current() { return snapshot?.toilets.find(t=>t.id===selected); }
 function select(id, scroll=false) {
-  if(dirty && id!==selected && !confirm('저장하지 않은 설정을 버리고 다른 화장실을 선택할까요?')) {
+  if((dirty||window.outdoor?.hasDraft()) && id!==selected && !confirm('저장하지 않은 설정을 버리고 다른 화장실을 선택할까요?')) {
     $('selected-toilet').value=selected; return false;
   }
   if(id!==selected) { selected=id;dirty=false;positionDraft=null; }
@@ -299,6 +299,7 @@ async function action(fn){try{await fn();}catch(e){notice(e.message,true);}}
 $('visitor-link').classList.toggle('active',!adminPage);$('admin-link').hidden=!adminPage;$('admin-link').classList.toggle('active',adminPage);
 if(adminPage){$('title').textContent='관리자 로그인';$('subtitle').textContent='';$('login-panel').hidden=false;$('workspace').hidden=true;}
 function loggedOut(message='로그아웃했습니다.') {
+  window.outdoor?.discard();
   if(drag)finishDrag({pointerId:drag.pointer},true);
   authenticated=false;dirty=false;positionDraft=null;$('title').textContent='관리자 로그인';$('map-editor').hidden=true;$('map-surface').classList.remove('map-editable');
   $('admin-panel').hidden=true;$('workspace').hidden=true;$('login-panel').hidden=false;$('device-token').value='';$('device-result').hidden=true;
@@ -399,9 +400,9 @@ $('qr-form').addEventListener('submit',e=>{e.preventDefault();action(async()=>{
 if(adminPage)showAdmin().catch(e=>{if(e.message.includes('이전 서버'))notice(e.message,true);});else refresh();
 setInterval(()=>{if(!adminPage||authenticated)refresh();},5000);
 
-window.hasUnsavedDesignChanges=()=>dirty;
-$('cancel-edit')?.addEventListener('click',()=>{dirty=false;positionDraft=null;fillForm();render();notice('수정을 취소했습니다.');});
-window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue='';}});
+window.hasUnsavedDesignChanges=()=>dirty||Boolean(window.outdoor?.hasDraft());
+$('cancel-edit')?.addEventListener('click',()=>{window.outdoor?.discard();dirty=false;positionDraft=null;fillForm();render();notice('수정을 취소했습니다.');});
+window.addEventListener('beforeunload',e=>{if(dirty||window.outdoor?.hasDraft()){e.preventDefault();e.returnValue='';}});
 
 window.rerenderRestflow=render;
 

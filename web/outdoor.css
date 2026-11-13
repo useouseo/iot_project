@@ -6,7 +6,23 @@
 #outdoor-detail p{margin:8px 0}
 #geo-editor{padding:16px;background:#f2f7f4}
 #geo-editor label{display:inline-block;max-width:180px;margin:4px}
-.geo-pin{border:2px solid white;border-radius:20px;background:#116c60;color:white;padding:7px 12px;white-space:nowrap;box-shadow:0 2px 5px #3334}
-.geo-pin.moderate{background:#a75c00}.geo-pin.busy{background:#bc3333}.geo-pin.unknown{background:#65716e}.geo-pin.selected{outline:3px solid #123e32}
+/* Two-line shield pins match the original festival-map markers. */
+.geo-facility-marker{width:52px;height:70px;display:flex;align-items:flex-start;justify-content:center;padding-top:12px;overflow:visible}
+.geo-pin{position:relative;width:40px;height:51px;flex:none;padding:3px 0 1px;border:2px solid #fff;border-radius:15px 15px 13px 13px;background:#638876;color:white;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:1px;box-shadow:0 3px 6px #18372c44;cursor:pointer;touch-action:none;isolation:isolate}
+.geo-pin:after{content:"";position:absolute;bottom:-6px;left:calc(50% - 6px);width:11px;height:11px;transform:rotate(45deg);background:inherit;border-right:2px solid #fff;border-bottom:2px solid #fff;border-radius:0 0 3px 0;z-index:-1}
+#outdoor-map .geo-letter{font-size:20px;font-weight:800;line-height:1.1}
+#outdoor-map .geo-pin small{font-size:9px;font-weight:650;line-height:1.2;white-space:nowrap}
+.geo-pin.moderate{background:#b79a4d}.geo-pin.busy{background:#cd8c78}.geo-pin.unknown{background:#7b8782}
+.geo-pin.selected{outline:2px solid #426d5a;outline-offset:3px}
+.geo-pin.unplaced{opacity:.65;border-style:dashed}
+.editing-facilities .geo-pin{cursor:grab}.editing-facilities .geo-pin:active{cursor:grabbing}
+.geo-user-marker{width:24px;height:24px;position:relative}
+.geo-user-marker>span{display:block;width:19px;height:19px;background:#2781ec;border:3px solid white;border-radius:50%;box-shadow:0 1px 6px #2263a866}
+.geo-user-marker>strong{position:absolute;top:24px;left:50%;transform:translateX(-50%);white-space:nowrap;background:white;color:#1962b7;padding:1px 6px;border-radius:8px;font-size:11px;box-shadow:0 1px 4px #0002}
+#geo-draft-state{font-size:12px;color:#486b5a;margin-bottom:0}
 #outdoor-map button{font:inherit}
 @media(max-width:600px){#outdoor-map{height:440px!important}.outdoor-tools button{flex:1}}
+
+#outdoor-map .geo-pin.unknown small{font-size:8px;letter-spacing:-.4px}
+
+.geo-coordinate-fields{margin:10px 0 14px;font-size:12px}.geo-coordinate-fields summary{cursor:pointer;color:#486b5a}#geo-save,#geo-undo{margin:4px 8px 0 0}
