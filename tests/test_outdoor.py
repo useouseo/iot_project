@@ -40,3 +40,19 @@ class OutdoorTests(unittest.TestCase):
     def test_rate_limit(self):
         with patch('server._route_next',float('inf')),self.assertRaises(Problem) as error:pedestrian_route(self.store,self.data)
         self.assertEqual(error.exception.status,429)
+
+    def test_browser_policy_upgrades_http_map_tiles(self):
+        import threading
+        from urllib.request import urlopen
+        from server import make_server
+        server=make_server('127.0.0.1',0,self.store)
+        thread=threading.Thread(target=server.serve_forever,daemon=True)
+        thread.start()
+        try:
+            with urlopen(f'http://127.0.0.1:{server.server_port}/api/map-config') as response:
+                policy=response.headers['Content-Security-Policy']
+                self.assertIn('upgrade-insecure-requests',policy)
+                self.assertIn('https://*.tmap.co.kr',policy)
+                self.assertNotIn('test-server-key',response.read().decode())
+        finally:
+            server.shutdown();server.server_close();thread.join()

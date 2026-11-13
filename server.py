@@ -491,7 +491,7 @@ class App(BaseHTTPRequestHandler):
         self.send_header('Cache-Control','no-store')
         self.send_header('X-Content-Type-Options','nosniff')
         self.send_header('X-Frame-Options','DENY')
-        self.send_header('Content-Security-Policy',"default-src 'self'; img-src 'self' data: blob: https://*.sk.com https://*.tmap.co.kr https://*.sktmap.com; style-src 'self' 'unsafe-inline'; script-src 'self' https://*.sk.com https://*.tmap.co.kr https://*.sktmap.com; connect-src 'self' https://*.sk.com https://*.tmap.co.kr https://*.sktmap.com; worker-src blob:; frame-ancestors 'none'; base-uri 'none'")
+        self.send_header('Content-Security-Policy',"default-src 'self'; img-src 'self' data: blob: https://*.sk.com https://*.tmap.co.kr https://*.sktmap.com; style-src 'self' 'unsafe-inline'; script-src 'self' https://*.sk.com https://*.tmap.co.kr https://*.sktmap.com; connect-src 'self' https://*.sk.com https://*.tmap.co.kr https://*.sktmap.com; worker-src blob:; upgrade-insecure-requests; frame-ancestors 'none'; base-uri 'none'")
         for key,value in (headers or {}).items():self.send_header(key,value)
         self.end_headers();self.wfile.write(body)
 
