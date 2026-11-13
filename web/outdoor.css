@@ -82,3 +82,11 @@
 .festival-ended{max-width:600px;margin:18vh auto;padding:32px;font-family:system-ui,sans-serif;color:#234738}.festival-ended h1{font-size:26px;line-height:1.5}.festival-ended p{line-height:1.8;color:#62756a}.festival-dialog .danger{border-color:#cf8c80;color:#a34036}
 
 #delete-festival{white-space:nowrap;border-color:#d6aaa0;color:#a34d40}#add-festival{white-space:nowrap}.signed-in header{min-height:52px;height:auto;padding-top:8px;padding-bottom:8px}@media(max-width:600px){#delete-festival{font-size:11px;padding:7px 9px}}
+
+/* Header controls share a baseline; generic danger-button margins belong only in panels. */
+.event-context{align-items:center;min-width:0}
+.event-context .mode-control{align-items:center;margin:0}
+.event-context #festival-select,.event-context #add-festival,.event-context #delete-festival{height:36px;margin:0;box-sizing:border-box;font-size:12px;line-height:20px;padding:7px 12px;align-self:center}
+.event-context #festival-kind,.event-context #demo-chip{margin:0;align-self:center}
+.signed-in header nav{flex-shrink:0;align-self:center}
+@media(max-width:600px){.event-context #festival-select,.event-context #add-festival,.event-context #delete-festival{height:34px;font-size:11px;padding:6px 9px}}

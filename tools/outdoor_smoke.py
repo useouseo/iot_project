@@ -56,6 +56,11 @@ def run():
             page.route('**/api/coordinates/*',save)
             page.goto(f'http://127.0.0.1:{server.server_port}/admin')
             page.wait_for_function('Boolean(window.outdoor && window.testMap && window.openAdminView)')
+            page.wait_for_function('!document.getElementById("festival-select").disabled')
+            header_controls=[page.locator(selector).bounding_box() for selector in ('#festival-select','#add-festival','#delete-festival')]
+            assert max(r['height'] for r in header_controls)-min(r['height'] for r in header_controls)<1
+            assert max(r['y'] for r in header_controls)-min(r['y'] for r in header_controls)<1
+            assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
             page.evaluate("window.openAdminView('facilities')")
             page.locator('.geo-pin.selected').wait_for()
             assert page.locator('.geo-pin.selected .geo-letter').inner_text()=='A'
