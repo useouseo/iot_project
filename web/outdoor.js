@@ -92,28 +92,67 @@
     const tid=selected,latitude=Number($('geo-lat').value),longitude=Number($('geo-lng').value);
     try{await request(`/api/coordinates/${tid}`,'PUT',{latitude,longitude});if(selected===tid){draft=null;markerSignature='';}clearRoute();message('화장실 입구 위치를 저장했습니다.');const fresh=await request('/api/status');update(fresh,selected,editing);}catch(e){message(e.message);}
   };
-  function locate(){
+  function acceptLocation(result,recenter=false){
+    const first=!position;
+    position={latitude:result.coords.latitude,longitude:result.coords.longitude,accuracy:result.coords.accuracy,timestamp:result.timestamp};
+    if(map){
+      locationMarker?.setMap(null);accuracyCircle?.setMap(null);
+      const point=new sdk.LatLng(position.latitude,position.longitude);
+      locationMarker=new sdk.Marker({position:point,map,iconHTML:'<div class="geo-user-marker"><span></span><strong>내 위치</strong></div>'});
+      accuracyCircle=new sdk.Circle({center:point,radius:position.accuracy,map,strokeColor:'#287bdb',fillColor:'#287bdb',fillOpacity:.12,strokeWeight:1});
+      if(first||recenter)map.setCenter(point);
+    }
+    if(recenter||(!routePending&&!routeLines.length))message(`현재 위치 오차 약 ${Math.round(position.accuracy)}m${position.accuracy>100?' · 위치 오차가 큽니다. 길찾기 전 출발 위치를 확인하세요.':''}`);
+    if(data)update(data,selected,editing);
+  }
+  function locationFailure(error){
+    if(error.code===1){
+      position=undefined;locationMarker?.setMap(null);accuracyCircle?.setMap(null);clearRoute();
+      if(watch!==undefined)navigator.geolocation.clearWatch(watch);watch=undefined;
+    }
+    if(data)update(data,selected,editing);
+    return error.code===1?'위치 권한이 꺼져 있습니다. 브라우저 설정에서 허용한 뒤 다시 눌러주세요.':position?'새 위치를 확인하지 못했습니다. 마지막 위치는 지도에 유지됩니다.':'위치를 확인하지 못했습니다. 야외에서 다시 시도하세요.';
+  }
+  function freshLocation(recenter=false){
+    return new Promise((resolve,reject)=>navigator.geolocation.getCurrentPosition(result=>{acceptLocation(result,recenter);resolve(result);},reject,{enableHighAccuracy:true,timeout:12000,maximumAge:0}));
+  }
+  async function locate(){
     if(!window.isSecureContext){message('위치 확인은 HTTPS 주소 또는 localhost에서 가능합니다.');return;}
     if(!navigator.geolocation){message('이 브라우저에서는 위치 확인을 지원하지 않습니다.');return;}
-    if(watch!==undefined){if(position&&map)map.setCenter(new sdk.LatLng(position.latitude,position.longitude));return;}
-    message('휴대폰 위치를 확인하고 있습니다. 위치 권한을 허용해 주세요.');
-    watch=navigator.geolocation.watchPosition(result=>{
-      const first=!position;position={...result.coords,latitude:result.coords.latitude,longitude:result.coords.longitude,accuracy:result.coords.accuracy,timestamp:result.timestamp};
-      if(map){locationMarker?.setMap(null);accuracyCircle?.setMap(null);const point=new sdk.LatLng(position.latitude,position.longitude);locationMarker=new sdk.Marker({position:point,map,iconHTML:'<div class="geo-user-marker"><span></span><strong>내 위치</strong></div>'});accuracyCircle=new sdk.Circle({center:point,radius:position.accuracy,map,strokeColor:'#287bdb',fillColor:'#287bdb',fillOpacity:.12,strokeWeight:1});if(first)map.setCenter(point);}
-      message(`현재 위치 오차 약 ${Math.round(position.accuracy)}m${position.accuracy>100?' · 위치가 부정확합니다. 야외에서 다시 확인해 주세요.':''}`);if(data)update(data,selected,editing);
-    },error=>{navigator.geolocation.clearWatch(watch);watch=undefined;position=undefined;locationMarker?.setMap(null);accuracyCircle?.setMap(null);clearRoute();if(data)update(data,selected,editing);message(error.code===1?'위치 권한이 꺼져 있습니다. 브라우저 설정에서 허용한 뒤 다시 눌러주세요.':'위치를 확인하지 못했습니다. 야외에서 다시 시도하세요.');},{enableHighAccuracy:true,timeout:15000,maximumAge:10000});
+    if($('geo-locate').disabled)return;
+    $('geo-locate').disabled=true;message('휴대폰 위치를 새로 확인하고 있습니다.');
+    if(watch===undefined){
+      watch=navigator.geolocation.watchPosition(result=>acceptLocation(result),error=>{
+        const warning=locationFailure(error);if(!routePending&&!routeLines.length)message(warning);
+      },{enableHighAccuracy:true,timeout:15000,maximumAge:10000});
+    }
+    try{await freshLocation(true);}catch(error){message(locationFailure(error));}
+    finally{$('geo-locate').disabled=false;}
   }
   $('geo-locate').onclick=locate;
   $('geo-route').onclick=async()=>{
     if(!position||!located(current()))return;
-    if(Date.now()-position.timestamp>60000||position.accuracy>100){message('위치가 오래되었거나 오차가 큽니다. 야외에서 정확한 위치가 잡힌 후 다시 시도하세요.');return;}
-    clearRoute();routePending=true;const token=sequence;routeController=new AbortController();const timer=setTimeout(()=>routeController?.abort(),15000);$('geo-route').disabled=true;message('도보 경로를 찾고 있습니다.');
+    clearRoute();routePending=true;const token=sequence;routeController=new AbortController();let timer;$('geo-route').disabled=true;message('도보 경로를 찾고 있습니다.');
     try{
+      if(Date.now()-position.timestamp>60000){
+        message('길찾기 전에 현재 위치를 새로 확인하고 있습니다.');
+        try{await freshLocation();}catch(error){
+          const warning=locationFailure(error);
+          if(!position){message(warning);return;}
+        }
+      }
+      if(token!==sequence)return;
+      const warnings=[];
+      if(Date.now()-position.timestamp>60000)warnings.push('최신 위치를 받지 못해 마지막으로 확인한 위치를 사용합니다.');
+      if(position.accuracy>100)warnings.push(`현재 위치 오차가 약 ${Math.round(position.accuracy)}m입니다.`);
+      if(warnings.length&&!confirm(warnings.join('\n')+'\n지도에서 출발 위치를 확인하셨나요? 이 위치로 길찾기를 계속할까요?')){message('길찾기를 취소했습니다. 내 위치 확인 후 다시 시도할 수 있습니다.');return;}
+      message('도보 경로를 찾고 있습니다.');
+      timer=setTimeout(()=>routeController?.abort(),15000);
       const result=await request('/api/route','POST',{latitude:position.latitude,longitude:position.longitude,toilet_id:selected},routeController.signal);
       if(token!==sequence)return;
       for(const line of result.lines)routeLines.push(new sdk.Polyline({path:line.map(([lng,lat])=>new sdk.LatLng(lat,lng)),strokeColor:'#1469d5',strokeWeight:6,map}));
       const bounds=new sdk.LatLngBounds();result.lines.flat().forEach(([lng,lat])=>bounds.extend(new sdk.LatLng(lat,lng)));map.fitBounds(bounds);
-      message(`도보 ${Number.isFinite(result.distance)?Math.round(result.distance)+'m':''} · ${Number.isFinite(result.seconds)?'약 '+Math.ceil(result.seconds/60)+'분':''}. 임시 통로·통제 구간은 현장 안내를 확인하세요. 이동 후 경로를 다시 조회할 수 있습니다.`);$('geo-clear').hidden=false;
+      message(`${warnings.length?'위치 오차에 따라 출발점이 다를 수 있습니다. ':''}도보 ${Number.isFinite(result.distance)?Math.round(result.distance)+'m':''} · ${Number.isFinite(result.seconds)?'약 '+Math.ceil(result.seconds/60)+'분':''}. 임시 통로·통제 구간은 현장 안내를 확인하세요. 이동 후 경로를 다시 조회할 수 있습니다.`);$('geo-clear').hidden=false;
     }catch(e){if(token===sequence)message(e.name==='AbortError'?'길찾기 시간이 초과되었습니다. 다시 시도하세요.':e.message);}
     finally{routePending=false;clearTimeout(timer);if(data)update(data,selected,editing);}
   };
