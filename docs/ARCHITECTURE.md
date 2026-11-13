@@ -4,7 +4,7 @@
 
 > **공간별 운영:** `festivals(id,name,mode,public_id,map)`와 `toilets.festival_id`로 데이터를 구분합니다. 관리자 선택은 `/admin?festival_id=...`, 방문객은 `/f/{public_id}`에 고정됩니다. API는 `festival_id` 쿼리로 범위를 정하고 변경·조회 대상 화장실의 소속을 검증합니다. `FestivalScope`는 요청마다 만드는 뷰이며 공유 Store의 현재 공간을 변경하지 않습니다. 관리자 계정과 장치 인증은 공통이고, 센서 이벤트는 고유 장치 ID·토큰을 통해 연결된 화장실/공간으로 귀속됩니다.
 >
-> `GET/POST /api/festivals`는 관리자 전용 목록/생성입니다. 유형은 생성 후 고정되고 기존 `/api/map-mode` 변경은 409를 반환합니다. 배치도는 공간별 `festivals.map`, 위도/경도와 이미지 X/Y는 해당 공간의 화장실에 저장됩니다. 기존 자료는 1번 ‘기존 공간’로 자동 이전되며 `/`는 이 공간으로 계속 연결됩니다. [운영·마이그레이션·QR 안내](OUTDOOR.md)
+> `GET/POST /api/festivals`는 관리자 전용 목록/생성입니다. 유형은 생성 후 고정되고 기존 `/api/map-mode` 변경은 409를 반환합니다. 배치도는 공간별 `festivals.map`, 위도/경도와 이미지 X/Y는 해당 공간의 화장실에 저장됩니다. 기존 자료는 1번 ‘기존 공간’로 자동 이전되며 `/`는 이 공간으로 계속 연결됩니다. [운영·마이그레이션·QR 안내](CHANGES-2026-11-13.md)
 
 # 시스템 설계와 API
 
