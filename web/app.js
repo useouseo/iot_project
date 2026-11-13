@@ -67,9 +67,9 @@ window.restflowIcon = name => '<svg class="ui-icon" viewBox="0 0 24 24" fill="no
   const button=make('button','side-link',`<span aria-hidden="true">${icons(key)}</span>${title}`);button.type='button';button.dataset.view=key;(key==='settings'?sidebar.querySelector('.sidebar-bottom'):nav).append(button);button.addEventListener('click',()=>window.openAdminView(key));
  }
  byId('logout').innerHTML=icons('logout')+'로그아웃';sidebar.querySelector('.sidebar-bottom').append(byId('logout'));
- const header=document.querySelector('header');const event=make('div','event-context',`<label class="mode-control" for="festival-select">축제 선택<select id="festival-select" aria-label="축제 선택" disabled><option value="">불러오는 중</option></select></label><span id="festival-kind" class="festival-kind"></span><button type="button" id="add-festival" class="secondary" disabled>+ 축제 추가</button><span id="demo-chip" class="demo-chip" hidden><b></b>시연 모드</span>`);header.prepend(event);byId('visitor-link').innerHTML=icons('external')+'방문객 화면';
+ const header=document.querySelector('header');const event=make('div','event-context',`<label class="mode-control" for="festival-select">축제 선택<select id="festival-select" aria-label="축제 선택" disabled><option value="">불러오는 중</option></select></label><span id="festival-kind" class="festival-kind"></span><button type="button" id="add-festival" class="secondary" disabled>+ 축제 추가</button><button type="button" id="delete-festival" class="secondary danger" disabled>축제 삭제</button><span id="demo-chip" class="demo-chip" hidden><b></b>시연 모드</span>`);header.prepend(event);byId('visitor-link').innerHTML=icons('external')+'방문객 화면';
  const festivalDialog=make('dialog','festival-dialog','<form id="festival-form"><h2>새 축제 추가</h2><label>축제 이름<input id="festival-name" maxlength="80" required placeholder="예: 별빛 실내 축제"></label><fieldset class="festival-types"><legend>운영 유형</legend><label><input type="radio" name="festival-mode" value="outdoor" required checked><strong>야외</strong><small>실제 지도 · 도보 길찾기</small></label><label><input type="radio" name="festival-mode" value="indoor" required><strong>실내</strong><small>배치도 업로드 · 혼잡도</small></label></fieldset><p>지도·화장실·센서·QR은 축제별로 따로 관리됩니다.</p><div class="festival-dialog-actions"><button id="cancel-festival" type="button" class="secondary">취소</button><button id="create-festival" class="primary" type="submit">축제 만들기</button></div><p id="festival-form-error" role="alert" hidden></p></form>');festivalDialog.id='festival-dialog';document.body.append(festivalDialog);
- const deleteDialog=make('dialog','festival-dialog','<form id="delete-festival-form"><h2>축제 삭제</h2><p><strong id="delete-festival-name"></strong> 축제를 삭제합니다.</p><p>관리자 목록에서 제거되고 기존 QR에는 운영 종료 안내가 표시됩니다. 화장실·장치·통행 기록은 보관됩니다.</p><label>확인을 위해 축제 이름을 입력하세요<input id="delete-festival-confirm" maxlength="80" required autocomplete="off"></label><div class="festival-dialog-actions"><button type="button" id="cancel-delete-festival" class="secondary">취소</button><button type="submit" id="confirm-delete-festival" class="secondary danger">축제 삭제</button></div><p id="delete-festival-error" role="alert" hidden></p></form>');deleteDialog.id='delete-festival-dialog';document.body.append(deleteDialog);
+
  const metrics=make('div','metrics');['등록 화장실','센서 연결','혼잡 시설','확인 필요'].forEach((title,i)=>metrics.append(make('div','metric',`<i aria-hidden="true">${icons(['facilities','wifi','users','alert'][i])}</i><div><span>${title}</span><strong>—</strong></div>`)));views.overview.append(metrics);
  const layout=document.querySelector('.layout');
  const workspaceHeading=document.querySelector('#workspace > .section-heading');workspaceHeading.remove();
@@ -105,7 +105,7 @@ window.restflowIcon = name => '<svg class="ui-icon" viewBox="0 0 24 24" fill="no
  byId('device-fields').querySelector('.hint').innerHTML='선택한 시설: <strong id="device-facility-label"></strong><br>화장실당 장치 한 대를 등록할 수 있습니다.';
  byId('device-toilet').addEventListener('change',()=>{byId('selected-toilet').value=byId('device-toilet').value;byId('selected-toilet').dispatchEvent(new Event('change'));});
  const qr=document.querySelector('.qr-section');qr.classList.add('panel');views.qr.append(qr);qr.querySelector('h4').textContent='방문객 접속 주소 및 QR';
- const festivalSettings=make('section','panel','<h3>축제 관리</h3><p id="festival-delete-description"></p><button id="delete-festival" type="button" class="secondary danger" disabled>현재 축제 삭제</button><p id="festival-delete-hint" class="hint"></p>');views.settings.append(festivalSettings,settingsPanel);settingsPanel.classList.remove('wide');
+ views.settings.append(settingsPanel);settingsPanel.classList.remove('wide');
  adminPanel.querySelector('.section-heading').remove();adminPanel.remove();
  // Keep the authenticated container ID used by existing authentication code.
  viewHost.id='admin-panel';
@@ -320,7 +320,7 @@ async function action(fn){try{await fn();}catch(e){notice(e.message,true);}}
 $('visitor-link').classList.toggle('active',!adminPage);$('admin-link').hidden=!adminPage;$('admin-link').classList.toggle('active',adminPage);
 if(adminPage){$('title').textContent='관리자 로그인';$('subtitle').textContent='';$('login-panel').hidden=false;$('workspace').hidden=true;}
 function loggedOut(message='로그아웃했습니다.') {
-  $('festival-select').disabled=true;$('add-festival').disabled=true;
+  $('festival-select').disabled=true;$('add-festival').disabled=true;$('delete-festival').disabled=true;
   window.outdoor?.discard();
   if(drag)finishDrag({pointerId:drag.pointer},true);
   authenticated=false;dirty=false;positionDraft=null;$('title').textContent='관리자 로그인';$('map-editor').hidden=true;$('map-surface').classList.remove('map-editable');
@@ -337,8 +337,7 @@ async function showAdmin(){
   const festivals=await api('/api/festivals');
   const options=festivals.map(festival=>{const option=document.createElement('option');option.value=festival.id;option.textContent=festival.name+' · '+(festival.mode==='indoor'?'실내':'야외');return option;});
   $('festival-select').replaceChildren(...options);$('festival-select').value=String(activeFestivalId);$('festival-select').disabled=false;$('add-festival').disabled=false;$('delete-festival').disabled=festivals.length<=1;
-  $('festival-delete-description').textContent=document.body.dataset.festivalName+' · '+(document.body.classList.contains('mode-indoor')?'실내':'야외');
-  $('festival-delete-hint').textContent=festivals.length<=1?'마지막 축제는 삭제할 수 없습니다. 새 축제를 추가한 뒤 삭제하세요.':'삭제하면 관리자 목록에서 제거되고 해당 QR의 안내가 종료됩니다.';
+  $('delete-festival').title=festivals.length<=1?'마지막 축제는 삭제할 수 없습니다. 새 축제를 먼저 추가하세요.':'현재 선택한 축제 삭제';
   $('visitor-link').href='/f/'+document.body.dataset.festivalPublicId;
   $('visitor-url').value=settings.automatic_visitor_url||settings.visitor_url||location.origin+'/f/'+document.body.dataset.festivalPublicId;updateQrHint();
   $('admin-password').value='';$('login-panel').hidden=true;$('workspace').hidden=false;$('admin-panel').hidden=false;
@@ -456,18 +455,13 @@ $('festival-form')?.addEventListener('submit',async event=>{
   }catch(error){$('festival-form-error').textContent=error.message;$('festival-form-error').hidden=false;$('create-festival').disabled=false;}
 });
 
-$('delete-festival')?.addEventListener('click',()=>{
-  $('delete-festival-form').reset();$('delete-festival-error').hidden=true;$('confirm-delete-festival').disabled=false;
-  $('delete-festival-name').textContent=document.body.dataset.festivalName;
-  $('delete-festival-dialog').showModal();$('delete-festival-confirm').focus();
-});
-$('cancel-delete-festival')?.addEventListener('click',()=>$('delete-festival-dialog').close());
-$('delete-festival-form')?.addEventListener('submit',async event=>{
-  event.preventDefault();$('confirm-delete-festival').disabled=true;$('delete-festival-error').hidden=true;
+$('delete-festival')?.addEventListener('click',async()=>{
+  if(!confirm(`정말 “${document.body.dataset.festivalName}” 축제를 삭제할까요?`))return;
+  $('delete-festival').disabled=true;
   try{
-    const result=await api('/api/festivals/'+activeFestivalId,'DELETE',{confirm_name:$('delete-festival-confirm').value});
+    const result=await api('/api/festivals/'+activeFestivalId,'DELETE',{confirm_name:document.body.dataset.festivalName});
     discardFestivalEdits();location.assign('/admin?festival_id='+result.next_festival_id);
-  }catch(error){$('delete-festival-error').textContent=error.message;$('delete-festival-error').hidden=false;$('confirm-delete-festival').disabled=false;}
+  }catch(error){$('delete-festival').disabled=false;notice(error.message,true);}
 });
 
 const buildLabel=elem('small','화면 버전: festivals-v2','app-build');document.querySelector('.map-panel').append(buildLabel);

@@ -111,23 +111,23 @@ def run():
             assert reloaded.snapshot(festival_id=indoor_id)['settings']['map'].startswith('data:image/png')
             assert len(reloaded.all_devices(festival_id=outdoor_id))==0
             assert len(reloaded.snapshot(festival_id=outdoor_id)['toilets'])==1
-            admin.evaluate("window.openAdminView('settings')")
-            admin.locator('#delete-festival').click();admin.locator('#delete-festival-confirm').fill('wrong')
-            admin.locator('#confirm-delete-festival').click();admin.locator('#delete-festival-error').wait_for()
-            admin.locator('#delete-festival-confirm').fill('봄빛 야외 축제');admin.locator('#confirm-delete-festival').click()
+            assert admin.locator('#add-festival + #delete-festival').count()==1
+            admin.once('dialog',lambda d:d.dismiss());admin.locator('#delete-festival').click()
+            assert len(store.list_festivals())==3
+            admin.once('dialog',lambda d:d.accept());admin.locator('#delete-festival').click()
             admin.wait_for_url('**/admin?festival_id=1')
             outdoor_visitor.get_by_text('운영이 종료된 축제입니다').wait_for(timeout=12000)
             assert visitor.locator('#subtitle').inner_text()=='별빛 실내 축제'
             assert len(store.list_festivals())==2
-            admin.wait_for_function('!document.getElementById("festival-select").disabled');admin.evaluate("window.openAdminView('settings')")
-            admin.locator('#delete-festival').click();admin.locator('#delete-festival-confirm').fill('기존 축제');admin.locator('#confirm-delete-festival').click()
+            admin.wait_for_function('!document.getElementById("festival-select").disabled')
+            admin.once('dialog',lambda d:d.accept());admin.locator('#delete-festival').click()
             admin.wait_for_url('**/admin?festival_id='+str(indoor_id))
-            admin.wait_for_function('!document.getElementById("festival-select").disabled');admin.evaluate("window.openAdminView('settings')")
+            admin.wait_for_function('!document.getElementById("festival-select").disabled')
             assert admin.locator('#delete-festival').is_disabled()
             assert len(Store(config).list_festivals())==1
             assert not errors,errors
             assert outdoor_visitor.evaluate('document.documentElement.scrollWidth<=innerWidth')
-            print('PASS: create indoor/outdoor festivals, isolated toilets/maps/sensors, indoor drag save, per-festival QR generation, pinned visitors, outdoor marker tap/route toggle, restart persistence, named deletion, ended visitors, legacy deletion, last-festival protection')
+            print('PASS: create indoor/outdoor festivals, isolated toilets/maps/sensors, indoor drag save, per-festival QR generation, pinned visitors, outdoor marker tap/route toggle, restart persistence, header delete confirmation/cancel, ended visitors, legacy deletion, last-festival protection')
             browser.close()
     finally:
         server.shutdown();server.server_close();thread.join()
