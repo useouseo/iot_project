@@ -16,7 +16,7 @@
   const located=t=>Number.isFinite(t?.latitude)&&Number.isFinite(t?.longitude);
   async function request(path,method='GET',body,signal){
     const response=await fetch(window.festivalApiPath(path),{method,headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined,signal:signal||AbortSignal.timeout(15000)});
-    const result=await response.json();if(!response.ok)throw Error(result.error||'요청에 실패했습니다');return result;
+    const result=await response.json();if(response.status===410)window.handleFestivalEnded();if(!response.ok)throw Error(result.error||'요청에 실패했습니다');return result;
   }
   function clearRoute(){sequence++;routeController?.abort();routeLines.forEach(l=>l.setMap(null));routeLines=[];routePending=false;$('geo-route').textContent='길찾기';}
   function update(snapshot,id,isEditing){

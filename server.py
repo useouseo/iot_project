@@ -21,7 +21,7 @@ import threading
 import mariadb
 
 ROOT = Path(__file__).resolve().parent
-APP_BUILD = '2026-11-13-festivals-v1'
+APP_BUILD = '2026-11-13-festivals-v2'
 
 def congestion_percent(score, healthy=True):
     """Relative traffic index, not stall occupancy. 0/.8/2/4 -> 0/40/75/100."""
@@ -296,6 +296,7 @@ class Store:
               token_hash CHAR(64) PRIMARY KEY, expires_at DOUBLE NOT NULL)
               ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci''')
             for statement in statements:db.execute(statement)
+            db.execute("ALTER TABLE festivals ADD COLUMN IF NOT EXISTS active TINYINT(1) NOT NULL DEFAULT 1")
             # One-time, additive migration: preserve all legacy facilities, devices and settings.
             if not db.execute('SELECT 1 FROM festivals WHERE id=1').fetchone():
                 legacy={r['key']:r['value'] for r in db.execute("SELECT * FROM settings WHERE `key` IN ('map','map_mode')")}
@@ -316,10 +317,12 @@ class Store:
                     (1,'화장실 A',4,22,28), (2,'화장실 B',4,78,48)])
                 if demo:
                     db.execute('INSERT INTO toilets(id,name,stalls,x,y) VALUES(3,?,?,?,?)',('화장실 C',3,28,78))
-        if demo and not self.all_devices():
-            for t in self.snapshot()['toilets']:
-                self.register({'id':f'demo-{t["id"]}', 'toilet_id':t['id']})
-            self.simulate()
+        if demo:
+            first=self.list_festivals()[0]['id']
+            if not self.all_devices(first):
+                for t in self.snapshot(festival_id=first)['toilets']:
+                    self.register({'id':f'demo-{t["id"]}', 'toilet_id':t['id']},first)
+                self.simulate(first)
 
     def connect(self):
         return Database(self.config,self.database)
@@ -398,7 +401,7 @@ class Store:
 
     def authenticate_device(self, device, token, db, lock=False):
         suffix=' FOR UPDATE' if lock else ''
-        row = db.execute('SELECT d.* FROM devices d JOIN toilets t ON t.id=d.toilet_id WHERE d.id=? AND t.active=1'+suffix,(device,)).fetchone()
+        row = db.execute('SELECT d.* FROM devices d JOIN toilets t ON t.id=d.toilet_id JOIN festivals f ON f.id=t.festival_id WHERE d.id=? AND t.active=1 AND f.active=1'+suffix,(device,)).fetchone()
         if not row or not hmac.compare_digest(row['token_hash'],digest(token)):
             raise Problem(401,'장치 인증에 실패했습니다')
         return row
@@ -469,17 +472,33 @@ class Store:
         with self.connect() as db:
             row=db.execute('SELECT * FROM festivals WHERE id=?',(festival_id,)).fetchone()
         if not row:raise Problem(404,'축제를 찾을 수 없습니다')
+        if not row['active']:raise Problem(410,'운영이 종료된 축제입니다')
         return dict(row)
 
     def festival_by_public_id(self,public_id):
         with self.connect() as db:
             row=db.execute('SELECT * FROM festivals WHERE public_id=?',(public_id,)).fetchone()
         if not row:raise Problem(404,'축제를 찾을 수 없습니다. QR 주소를 확인하세요')
+        if not row['active']:raise Problem(410,'운영이 종료된 축제입니다')
         return dict(row)
 
     def list_festivals(self):
         with self.connect() as db:
-            return [dict(r) for r in db.execute('SELECT id,name,mode,public_id FROM festivals ORDER BY id')]
+            return [dict(r) for r in db.execute('SELECT id,name,mode,public_id FROM festivals WHERE active=1 ORDER BY id')]
+
+    def delete_festival(self,festival_id,confirm_name):
+        festival_id=integer(festival_id,1,2147483647,'축제 ID')
+        with self.connect() as db:
+            # Lock active rows in a consistent order so concurrent deletions cannot remove the last festival.
+            rows=db.execute('SELECT id,name FROM festivals WHERE active=1 ORDER BY id FOR UPDATE').fetchall()
+            target=next((r for r in rows if r['id']==festival_id),None)
+            if not target:raise Problem(404,'삭제할 축제를 찾을 수 없습니다')
+            if not isinstance(confirm_name,str) or confirm_name.strip()!=target['name']:
+                raise Problem(400,'삭제할 축제 이름을 정확히 입력하세요')
+            if len(rows)<=1:raise Problem(409,'마지막 축제는 삭제할 수 없습니다. 새 축제를 먼저 추가하세요')
+            db.execute('UPDATE festivals SET active=0 WHERE id=?',(festival_id,))
+            db.execute('INSERT INTO audit(at,action) VALUES(?,?)',(time.time(),f'festival archived: {festival_id}'))
+            return {'deleted':True,'next_festival_id':next(r['id'] for r in rows if r['id']!=festival_id)}
 
     def create_festival(self,data):
         name=text_value(data.get('name'),80,'축제 이름')
@@ -617,22 +636,39 @@ class App(BaseHTTPRequestHandler):
         try:
             route=urlparse(self.path);p=route.path;root_store=self.server.store
             query=parse_qs(route.query)
+            assets={'/app.js':'app.js','/outdoor.js':'outdoor.js','/style.css':'style.css','/outdoor.css':'outdoor.css','/map.svg':'map.svg','/pretendard.woff2':'pretendard.woff2'}
+            if method=='GET' and p in assets:
+                file=ROOT/'web'/assets[p]
+                types={'.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.woff2':'font/woff2'}
+                return self.send(200,file.read_bytes(),types[file.suffix])
+            if method=='GET' and p=='/api/version':return self.send(200,{'build':APP_BUILD,'files':{name:hashlib.sha256((ROOT/'web'/name).read_bytes()).hexdigest()[:12] for name in ('app.js','outdoor.js','outdoor.css')}})
+            if method=='GET' and p=='/api/health':
+                with root_store.connect() as db:db.execute('SELECT 1').fetchone()
+                return self.send(200,{'ok':True,'demo':root_store.demo,'auth_mode':'password','api_version':2})
+            if p=='/api/festivals' and method in ('GET','POST'):
+                self.admin()
+                return self.send(200,root_store.list_festivals()) if method=='GET' else self.send(201,root_store.create_festival(self.body()))
+            if method=='DELETE' and re.fullmatch(r'/api/festivals/[0-9]+',p):
+                self.admin();data=self.body()
+                return self.send(200,root_store.delete_festival(int(p.rsplit('/',1)[1]),data.get('confirm_name')))
+            if method=='POST' and p=='/api/login':
+                session=root_store.login(self.body().get('password'))
+                return self.send(200,{'authenticated':True},headers=self.session_cookie(session))
+            if method=='POST' and p in ('/api/events','/api/heartbeat'):
+                return self.send(200,root_store.ingest(self.body(),self.token(),p.endswith('heartbeat')))
+            if method=='POST' and p=='/api/logout':
+                self.admin();root_store.logout(self.session_token())
+                return self.send(200,{'logged_out':True},headers=self.session_cookie('',True))
             if p.startswith('/f/'):
                 festival=root_store.festival_by_public_id(p[3:])
                 fid=festival['id'];p='/'
             else:
-                try:fid=int(query.get('festival_id',['1'])[0])
+                try:fid=int(query.get('festival_id',[str(root_store.list_festivals()[0]['id']) if p=='/admin' else '1'])[0])
                 except ValueError:raise Problem(400,'잘못된 축제 ID')
             store=FestivalScope(root_store,fid)
             if method=='GET':
-                if p=='/api/festivals':
-                    self.admin();return self.send(200,root_store.list_festivals())
-                if p=='/api/version':return self.send(200,{'build':APP_BUILD,'files':{name:hashlib.sha256((ROOT/'web'/name).read_bytes()).hexdigest()[:12] for name in ('app.js','outdoor.js','outdoor.css')}})
                 if p=='/api/map-config': return self.send(200,{'map_key':environment_secret('RESTFLOW_TMAP_MAP_KEY') or '', 'routing':bool(environment_secret('RESTFLOW_TMAP_ROUTE_KEY')), 'map_mode':store.map_mode()})
                 if p=='/api/status': return self.send(200,store.snapshot())
-                if p=='/api/health':
-                    with store.connect() as db: db.execute('SELECT 1').fetchone()
-                    return self.send(200,{'ok':True,'demo':store.demo,'auth_mode':'password','api_version':2})
                 if p=='/api/admin':
                     self.admin();return self.send(200,{'devices':store.all_devices(),'visitor_url':self.qr_url(store),'automatic_visitor_url':festival_url(self.server.public_url,store.festival_info)})
                 if p=='/api/history':
@@ -644,7 +680,7 @@ class App(BaseHTTPRequestHandler):
                     url=self.qr_url(store)
                     if not url:raise Problem(409,'start_public.bat 실행 후 관리자 화면에서 QR을 생성하세요')
                     return self.send(200,qr_svg(url),'image/svg+xml')
-                allowed={'/outdoor.js':'outdoor.js','/outdoor.css':'outdoor.css','/':'index.html','/admin':'index.html','/app.js':'app.js','/style.css':'style.css','/map.svg':'map.svg','/pretendard.woff2':'pretendard.woff2'}
+                allowed={'/':'index.html','/admin':'index.html'}
                 if p in allowed:
                     f=ROOT/'web'/allowed[p]
                     types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.woff2':'font/woff2'}
@@ -661,21 +697,12 @@ class App(BaseHTTPRequestHandler):
                     return self.send(200,body,types[f.suffix])
                 raise Problem(404,'경로를 찾을 수 없습니다')
             data={} if method=='DELETE' else self.body()
-            if method=='POST' and p=='/api/login':
-                session=store.login(data.get('password'))
-                return self.send(200,{'authenticated':True},headers=self.session_cookie(session))
-            if method=='POST' and p in ('/api/events','/api/heartbeat'):
-                return self.send(200,store.ingest(data,self.token(),p.endswith('heartbeat')))
             if method=='POST' and p=='/api/route':return self.send(200,pedestrian_route(store,data))
             self.admin()
-            if method=='POST' and p=='/api/festivals':return self.send(201,root_store.create_festival(data))
             if method=='PUT' and p=='/api/map-mode':return self.send(200,store.set_map_mode(data.get('map_mode')))
             if method=='POST' and p=='/api/qr':
                 url=festival_url(automatic_qr_url(self.server.public_url or data.get('url')),store.festival_info)
                 return self.send(200,{'url':url,'svg':qr_svg(url).decode('utf-8')})
-            if method=='POST' and p=='/api/logout':
-                store.logout(self.session_token())
-                return self.send(200,{'logged_out':True},headers=self.session_cookie('',True))
             if method=='PUT' and p=='/api/password':
                 session=store.change_password(data.get('current_password'),data.get('new_password'))
                 return self.send(200,{'changed':True},headers=self.session_cookie(session))
@@ -725,7 +752,12 @@ class App(BaseHTTPRequestHandler):
                 with store.connect() as db:db.execute('UPDATE festivals SET map=? WHERE id=?',(image,fid))
                 return self.send(200,{'saved':True})
             raise Problem(404,'경로를 찾을 수 없습니다')
-        except Problem as e:self.send(e.status,{'error':e.message})
+        except Problem as e:
+            if e.status==410 and method=='GET' and (urlparse(self.path).path=='/' or urlparse(self.path).path.startswith('/f/')):
+                return self.send(410,'<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>축제 운영 종료 · RestFlow</title><link rel="stylesheet" href="/outdoor.css"><main class="festival-ended"><h1>운영이 종료된 축제입니다</h1><p>이 QR의 화장실 안내는 종료되었습니다. 현장 안내를 확인해 주세요.</p></main></html>','text/html; charset=utf-8')
+            if e.status==410 and method=='GET' and urlparse(self.path).path=='/admin':
+                return self.send(303,'',headers={'Location':'/admin'})
+            self.send(e.status,{'error':e.message})
         except (BrokenPipeError,ConnectionResetError):pass
         except Exception:
             self.send(500,{'error':'서버 오류가 발생했습니다. 서버 설정을 확인하세요'})

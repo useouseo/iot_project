@@ -139,3 +139,45 @@ class FestivalTests(unittest.TestCase):
         again=Store(CONFIG)
         self.assertEqual(again.festival()['public_id'],public_id)
         self.assertEqual(len(again.list_festivals()),1)
+    def test_festival_delete_requires_name_and_retains_records(self):
+        token=self.store.register({'id':'ending-sensor','toilet_id':self.out_toilet},self.outdoor['id'])['token']
+        path='/api/festivals/'+str(self.outdoor['id'])
+        self.assertEqual(self.request(path,'DELETE',{'confirm_name':self.outdoor['name']},admin=False)[0],401)
+        self.assertEqual(self.request(path,'DELETE',{'confirm_name':'wrong'})[0],400)
+        self.assertEqual(self.request(path,'DELETE',{'confirm_name':self.outdoor['name']})[0],200)
+        self.assertNotIn(self.outdoor['id'],[f['id'] for f in self.store.list_festivals()])
+        code,body=self.request('/f/'+self.outdoor['public_id'],admin=False)
+        self.assertEqual(code,410);self.assertIn('운영이 종료된 축제입니다',body);self.assertNotIn('야외 A',body)
+        self.assertEqual(self.request('/api/status',festival=self.outdoor['id'])[0],410)
+        with self.assertRaises(Problem) as error:self.store.ingest({'device_id':'ending-sensor'},token,heartbeat=True)
+        self.assertEqual(error.exception.status,401)
+        with self.store.connect() as db:
+            self.assertEqual(db.execute('SELECT count(*) n FROM toilets WHERE festival_id=?',(self.outdoor['id'],)).fetchone()['n'],1)
+            self.assertEqual(db.execute("SELECT count(*) n FROM devices WHERE id='ending-sensor'").fetchone()['n'],1)
+        self.assertEqual(len(self.store.snapshot(festival_id=self.indoor['id'])['toilets']),1)
+    def test_deleting_legacy_festival_keeps_admin_creation_and_assets_working(self):
+        legacy=self.store.festival()
+        self.assertEqual(self.request('/api/festivals/1','DELETE',{'confirm_name':legacy['name']})[0],200)
+        self.assertEqual(self.request('/')[0],410)
+        self.assertEqual(self.request('/admin')[0],200)
+        self.assertEqual(self.request('/api/festivals')[0],200)
+        self.assertEqual(self.request('/api/health')[0],200)
+        self.assertEqual(self.request('/api/version')[0],200)
+        self.assertEqual(self.request('/app.js')[0],200)
+        self.assertEqual(self.request('/api/festivals','POST',{'name':'삭제 후 새 축제','mode':'indoor'})[0],201)
+        reloaded=Store(CONFIG)
+        self.assertNotIn(1,[f['id'] for f in reloaded.list_festivals()])
+        with self.assertRaises(Problem) as error:reloaded.festival(1)
+        self.assertEqual(error.exception.status,410)
+        # Demo initialization must also avoid reactivating the deleted legacy festival.
+        demo_config=CONFIG.copy();demo_config['demo_database']=CONFIG['database']
+        Store(demo_config,demo=True)
+        self.assertNotIn(1,[f['id'] for f in reloaded.list_festivals()])
+    def test_concurrent_delete_preserves_at_least_one_festival(self):
+        self.store.delete_festival(self.outdoor['id'],self.outdoor['name'])
+        candidates=self.store.list_festivals()
+        def remove(f):return self.request('/api/festivals/'+str(f['id']),'DELETE',{'confirm_name':f['name']})[0]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            statuses=list(pool.map(remove,candidates))
+        self.assertEqual(sorted(statuses),[200,409])
+        self.assertEqual(len(self.store.list_festivals()),1)

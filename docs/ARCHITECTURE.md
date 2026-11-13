@@ -1,3 +1,5 @@
+> **축제 삭제:** `festivals.active`를 0으로 바꾸는 보관 처리입니다. 관리자 전용 `DELETE /api/festivals/{id}`에 JSON `confirm_name`을 보내야 하고, 활성 축제를 잠가 마지막 축제 삭제를 막습니다. 삭제된 공개 주소/상태 API는 410, 장치 이벤트는 401로 응답합니다. 목록·인증·상태 자산은 1번 축제의 활성 여부와 무관하게 동작합니다.
+
 > **축제별 운영:** `festivals(id,name,mode,public_id,map)`와 `toilets.festival_id`로 데이터를 구분합니다. 관리자 선택은 `/admin?festival_id=...`, 방문객은 `/f/{public_id}`에 고정됩니다. API는 `festival_id` 쿼리로 범위를 정하고 변경·조회 대상 화장실의 소속을 검증합니다. `FestivalScope`는 요청마다 만드는 뷰이며 공유 Store의 현재 축제를 변경하지 않습니다. 관리자 계정과 장치 인증은 공통이고, 센서 이벤트는 고유 장치 ID·토큰을 통해 연결된 화장실/축제로 귀속됩니다.
 >
 > `GET/POST /api/festivals`는 관리자 전용 목록/생성입니다. 유형은 생성 후 고정되고 기존 `/api/map-mode` 변경은 409를 반환합니다. 배치도는 축제별 `festivals.map`, 위도/경도와 이미지 X/Y는 해당 축제의 화장실에 저장됩니다. 기존 자료는 1번 ‘기존 축제’로 자동 이전되며 `/`는 이 축제로 계속 연결됩니다. [운영·마이그레이션·QR 안내](OUTDOOR.md)
