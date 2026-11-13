@@ -15,7 +15,7 @@ import webbrowser
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from server import DB_CONFIG_PATH, Store, load_db_config, make_server, password_hash
+from server import APP_BUILD, DB_CONFIG_PATH, Store, load_db_config, make_server, password_hash
 
 
 def tunnel_url(line):
@@ -84,6 +84,7 @@ def run(args):
         raise RuntimeError('이 실행 도구는 Windows용입니다. 고정 서버는 server.py와 PUBLIC_URL을 사용하세요.')
     if not 1 <= args.port <= 65535:
         raise RuntimeError('포트는 1~65535 범위로 지정하세요.')
+    print(f'RestFlow 버전: {APP_BUILD}\n실행 폴더: {ROOT}',flush=True)
     config = load_or_setup(args.db_config)
     try:
         store = Store(config, args.demo)
