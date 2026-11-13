@@ -34,7 +34,7 @@ window.Tmapv2={Map:TestMap,Marker,LatLng:Point,Size:class{},Circle:Overlay,Polyl
 def run():
     toilets=[dict(id=i,name=f'화장실 {chr(64+i)}',stalls=4,x=50,y=50,latitude=37.57+i*.001 if i<3 else None,longitude=126.98 if i<3 else None,level=['quiet','moderate','busy'][i-1],online=True,quality='good',score=.2,congestion_percent=10,last_seen=time.time(),device_id=f'demo-{i}') for i in range(1,4)]
     state=dict(demo=True,settings={},updated_at=time.time(),toilets=toilets)
-    store=Mock();store.map_mode.return_value='outdoor';store.snapshot.side_effect=lambda:copy.deepcopy(state)
+    store=Mock();store.festival.return_value=dict(id=1,name='테스트 축제',mode='outdoor',public_id='test-outdoor',map=None);store.list_festivals.return_value=[dict(id=1,name='테스트 축제',mode='outdoor',public_id='test-outdoor')];store.map_mode.return_value='outdoor';store.snapshot.side_effect=lambda **kwargs:copy.deepcopy(state)
     server=make_server('127.0.0.1',0,store)
     thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
     saved=[]
@@ -44,13 +44,13 @@ def run():
             page=browser.new_page(viewport={'width':1440,'height':1000},bypass_csp=True)
             errors=[];page.on('pageerror',lambda error:errors.append(str(error)))
             page.route('https://apis.openapi.sk.com/**',lambda r:r.fulfill(body=SDK,content_type='application/javascript'))
-            page.route('**/api/map-config',lambda r:r.fulfill(json=dict(map_key='test',routing=True)))
-            page.route('**/api/admin',lambda r:r.fulfill(json=dict(devices=[],visitor_url='',automatic_visitor_url='')))
-            page.route('**/api/health',lambda r:r.fulfill(json=dict(ok=True,auth_mode='password')))
+            page.route('**/api/map-config*',lambda r:r.fulfill(json=dict(map_key='test',routing=True)))
+            page.route('**/api/admin*',lambda r:r.fulfill(json=dict(devices=[],visitor_url='',automatic_visitor_url='')))
+            page.route('**/api/health*',lambda r:r.fulfill(json=dict(ok=True,auth_mode='password')))
             page.route('**/api/history?*',lambda r:r.fulfill(json=[]))
             def save(route):
                 values=route.request.post_data_json
-                tid=int(route.request.url.rsplit('/',1)[1]);saved.append((tid,values))
+                tid=int(route.request.url.split('?',1)[0].rsplit('/',1)[1]);saved.append((tid,values))
                 next(t for t in state['toilets'] if t['id']==tid).update(values)
                 route.fulfill(json={'saved':True})
             page.route('**/api/coordinates/*',save)

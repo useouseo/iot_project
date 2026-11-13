@@ -62,3 +62,19 @@
  .editing-facilities #geo-undo{grid-column:2;grid-row:auto}
  .editing-facilities .geo-coordinate-fields,.editing-facilities #geo-draft-state{grid-column:1/-1;grid-row:auto}
 }
+
+.festival-kind{font-size:11px;border-radius:12px;padding:2px 9px;background:#edf3ef;color:#386b55;white-space:nowrap}
+.festival-dialog{width:min(460px,calc(100% - 32px));border:1px solid #d9e3dc;border-radius:16px;padding:24px;color:var(--ink);box-shadow:0 12px 60px #18372c33}
+.festival-dialog::backdrop{background:#173c2b66}
+.festival-dialog h2{font-size:21px;margin:0 0 20px}
+.festival-dialog input[type=text],#festival-name{width:100%}
+.festival-types{border:0;padding:0;margin:18px 0;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.festival-types legend{font-size:13px;font-weight:650;margin-bottom:8px}
+.festival-types label{position:relative;border:1px solid #cddbd2;border-radius:10px;padding:16px 10px;margin:0;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px}
+.festival-types label:has(input:checked){border:2px solid #49765f;background:#edf5ee}
+.festival-types input{width:auto;margin:0}.festival-types strong{font-size:19px}.festival-types small{font-size:11px;color:#65776b;white-space:nowrap}
+.festival-dialog p{font-size:12px;color:#64776c}.festival-dialog-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
+#festival-form-error{color:#ac3a32}
+#festival-select{max-width:260px}
+.event-context{flex-wrap:wrap}
+@media(max-width:600px){#festival-select{max-width:170px}#add-festival{font-size:11px;padding:7px 9px}.festival-kind{font-size:10px}.festival-dialog{padding:20px}.festival-types{gap:8px}.festival-types small{font-size:10px}}

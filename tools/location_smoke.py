@@ -22,7 +22,7 @@ Object.defineProperty(navigator,'geolocation',{value:{
 '''
 
 def run():
-    store=Mock();store.map_mode.return_value='outdoor';store.snapshot.return_value=dict(settings={},demo=True,updated_at=time.time(),toilets=[dict(id=1,name='화장실 A',stalls=4,x=50,y=50,latitude=37.58,longitude=126.99,level='quiet',online=True,quality='good',score=.2,congestion_percent=10,last_seen=time.time(),device_id='demo-1')])
+    store=Mock();store.festival.return_value=dict(id=1,name='테스트 축제',mode='outdoor',public_id='test-outdoor',map=None);store.list_festivals.return_value=[dict(id=1,name='테스트 축제',mode='outdoor',public_id='test-outdoor')];store.map_mode.return_value='outdoor';store.snapshot.return_value=dict(settings={},demo=True,updated_at=time.time(),toilets=[dict(id=1,name='화장실 A',stalls=4,x=50,y=50,latitude=37.58,longitude=126.99,level='quiet',online=True,quality='good',score=.2,congestion_percent=10,last_seen=time.time(),device_id='demo-1')])
     server=make_server('127.0.0.1',0,store);thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
     try:
         with sync_playwright() as p:
@@ -31,12 +31,12 @@ def run():
             page.add_init_script(GEO)
             errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
             page.route('https://apis.openapi.sk.com/**',lambda r:r.fulfill(body=SDK,content_type='application/javascript'))
-            page.route('**/api/map-config',lambda r:r.fulfill(json=dict(map_key='test',routing=True)))
+            page.route('**/api/map-config*',lambda r:r.fulfill(json=dict(map_key='test',routing=True)))
             routes=[]
             def route(r):
                 routes.append(r.request.post_data_json)
                 r.fulfill(json=dict(lines=[[[126.98,37.57],[126.99,37.58]]],distance=120,seconds=90))
-            page.route('**/api/route',route)
+            page.route('**/api/route*',route)
             page.goto(f'http://127.0.0.1:{server.server_port}/')
             page.wait_for_function('testGeo.calls===1 && !document.getElementById("geo-route").disabled')
             page.evaluate('testGeo.latitude=37.571;testGeo.timestamp=Date.now()')
