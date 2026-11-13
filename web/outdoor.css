@@ -37,3 +37,5 @@
 @media(max-width:600px){.mode-control{gap:7px;font-size:12px}.mode-control select{min-width:0;max-width:155px;font-size:12px}.event-context{gap:8px}.outdoor-tools{padding:12px;gap:8px}}
 
 .app-build{display:block!important;text-align:right;padding:4px 12px;font-size:10px!important;white-space:nowrap;color:#69776f}
+
+.geo-facility-marker,.geo-pin,.geo-pin>*{pointer-events:auto}#outdoor-map .geo-pin{cursor:pointer}.editing-facilities #outdoor-map .geo-pin{cursor:grab}

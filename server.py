@@ -21,7 +21,7 @@ import threading
 import mariadb
 
 ROOT = Path(__file__).resolve().parent
-APP_BUILD = '2026-11-13-modes-v1'
+APP_BUILD = '2026-11-13-marker-v2'
 
 def congestion_percent(score, healthy=True):
     """Relative traffic index, not stall occupancy. 0/.8/2/4 -> 0/40/75/100."""

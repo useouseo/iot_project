@@ -49,7 +49,7 @@ class ModeTests(unittest.TestCase):
         self.assertEqual(self.store.map_mode(),'outdoor')
         code,html=self.request('/')
         self.assertEqual(code,200);self.assertIn('tmap/jsv2',html)
-        self.assertIn('mode-outdoor',html);self.assertIn('modes-v1',html)
+        self.assertIn('mode-outdoor',html);self.assertIn('marker-v2',html)
     def test_authorization_and_invalid_mode(self):
         self.assertEqual(self.request('/api/map-mode','PUT',{'map_mode':'indoor'},False)[0],401)
         self.assertEqual(self.request('/api/map-mode','PUT',{'map_mode':'wrong'})[0],400)
@@ -71,5 +71,5 @@ class ModeTests(unittest.TestCase):
         self.assertEqual(other.map_mode(),'outdoor')
     def test_version_endpoint_identifies_assets_without_keys(self):
         status,body=self.request('/api/version')
-        self.assertEqual(status,200);self.assertIn('modes-v1',body)
+        self.assertEqual(status,200);self.assertIn('marker-v2',body)
         self.assertNotIn('test-map-key',body);self.assertNotIn('test-route-key',body)

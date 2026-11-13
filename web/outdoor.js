@@ -10,6 +10,7 @@
   let routePending=false, map, sdk, data, selected, editing=false, markers=[], routeLines=[], routeController, sequence=0, position, locationMarker, accuracyCircle, watch, selectedBefore, fitted=false, routing=false;
   let draft=null, draggingMarker=false, markerSignature='', suppressMapClickUntil=0;
   const message=s=>{$('outdoor-message').textContent=s;};
+  let pointerTap=null, lastActivation=null;
   const current=()=>data?.toilets.find(t=>t.id===selected);
   const located=t=>Number.isFinite(t?.latitude)&&Number.isFinite(t?.longitude);
   async function request(path,method='GET',body,signal){
@@ -20,7 +21,7 @@
   function update(snapshot,id,isEditing){
     data=snapshot;selected=id;editing=isEditing;
     if((snapshot.settings.map_mode||'outdoor')==='indoor'){clearRoute();if(watch!==undefined)navigator.geolocation.clearWatch(watch);watch=undefined;draft=null;return;}
-    if(selectedBefore!==selected||!editing){draft=null;draggingMarker=false;markerSignature='';}
+    if(selectedBefore!==selected||!editing){draft=null;draggingMarker=false;}
     if(selectedBefore!==selected){clearRoute();selectedBefore=selected;$('geo-editor').reset();}
     $('geo-editor').hidden=!editing;
     document.querySelectorAll('.badge').forEach(n=>n.textContent='야외 지도');
@@ -50,13 +51,13 @@
       const point=draft?.id===facility.id?new sdk.LatLng(draft.latitude,draft.longitude):located(facility)?new sdk.LatLng(facility.latitude,facility.longitude):map.getCenter();
       const pin=document.createElement('button');
       pin.className=`geo-pin ${facility.level}${isSelected?' selected':''}${unplaced?' unplaced':''}`;
-      pin.dataset.facilityId=facility.id;pin.type='button';pin.setAttribute('aria-label',`${facility.name}, ${labels[facility.level]}${editing?' · 드래그하여 입구 위치 지정':''}`);
+      pin.dataset.facilityId=facility.id;pin.type='button';pin.setAttribute('aria-pressed',String(isSelected));pin.setAttribute('aria-label',`${facility.name}, ${labels[facility.level]}${editing?' · 드래그하여 입구 위치 지정':''}`);
       pin.title=facility.name+(editing?' · 드래그하여 위치 이동':'');
       const letter=document.createElement('span');letter.className='geo-letter';letter.textContent=index<26?String.fromCharCode(65+index):String(index+1);
       const status=document.createElement('small');status.textContent=unplaced?'미등록':labels[facility.level];pin.append(letter,status);
       const wrapper=document.createElement('div');wrapper.className='geo-facility-marker';wrapper.append(pin);
       const marker=new sdk.Marker({position:point,map,iconHTML:wrapper.outerHTML,iconSize:new sdk.Size(52,70),draggable:editing&&isSelected,title:facility.name});
-      marker.addListener('click',()=>{if(performance.now()<suppressMapClickUntil)return;window.chooseOutdoorFacility(facility.id);});
+      marker.addListener('click',()=>activateFacility(facility.id));
       if(editing){
         marker.addListener('dragstart',()=>{
           draggingMarker=true;
@@ -82,12 +83,44 @@
   }
   function discard(){draft=null;draggingMarker=false;markerSignature='';$('geo-editor').reset();const t=current();if(located(t)){$('geo-lat').value=t.latitude;$('geo-lng').value=t.longitude;}if(data)update(data,selected,editing);}
   window.outdoor={update,hasDraft:()=>Boolean(draft),discard};
-  $('outdoor-map').addEventListener('click',event=>{
-    const pin=event.target.closest('[data-facility-id]');
-    if(!pin||draggingMarker||performance.now()<suppressMapClickUntil)return;
-    event.stopPropagation();
-    window.chooseOutdoorFacility(Number(pin.dataset.facilityId));
-  });
+  function activateFacility(id){
+    if(draggingMarker||performance.now()<suppressMapClickUntil||!data?.toilets.some(t=>t.id===id))return;
+    if(lastActivation?.id===id&&performance.now()-lastActivation.at<350)return;
+    lastActivation={id,at:performance.now()};
+    window.chooseOutdoorFacility(id);
+  }
+  function pinAt(event){
+    const target=event.target?.closest?.('[data-facility-id]');
+    if(target&&$('outdoor-map').contains(target))return target;
+    // SDK map/polygon layers can be the event target even when a visible HTML pin is tapped.
+    // Hit-test visible pins in screen coordinates before the SDK consumes the event.
+    const pins=[...$('outdoor-map').querySelectorAll('[data-facility-id]')].reverse();
+    return pins.find(pin=>{
+      const rect=pin.getBoundingClientRect();
+      return rect.width>0&&rect.height>0&&event.clientX>=rect.left&&event.clientX<=rect.right&&event.clientY>=rect.top&&event.clientY<=rect.bottom;
+    });
+  }
+  const mapElement=$('outdoor-map');
+  mapElement.addEventListener('click',event=>{
+    const pin=pinAt(event);if(!pin)return;
+    if(draggingMarker||performance.now()<suppressMapClickUntil)return;
+    event.preventDefault();event.stopPropagation();activateFacility(Number(pin.dataset.facilityId));
+  },true);
+  mapElement.addEventListener('pointerdown',event=>{
+    if(editing||event.isPrimary===false||(event.pointerType==='mouse'&&event.button!==0))return;
+    const pin=pinAt(event);
+    pointerTap=pin?{id:Number(pin.dataset.facilityId),pointer:event.pointerId,x:event.clientX,y:event.clientY,moved:false}:null;
+  },true);
+  document.addEventListener('pointermove',event=>{
+    if(pointerTap&&event.pointerId===pointerTap.pointer&&Math.hypot(event.clientX-pointerTap.x,event.clientY-pointerTap.y)>12)pointerTap.moved=true;
+  },true);
+  document.addEventListener('pointerup',event=>{
+    if(!pointerTap||event.pointerId!==pointerTap.pointer)return;
+    const tap=pointerTap;pointerTap=null;
+    if(editing||tap.moved||Math.hypot(event.clientX-tap.x,event.clientY-tap.y)>12)return;
+    event.preventDefault();event.stopPropagation();activateFacility(tap.id);
+  },true);
+  document.addEventListener('pointercancel',()=>{pointerTap=null;},true);
   $('geo-undo').onclick=()=>{discard();message('저장된 위치로 되돌렸습니다.');};
   $('geo-editor').addEventListener('input',()=>{
     const lat=$('geo-lat'),lng=$('geo-lng');

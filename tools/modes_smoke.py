@@ -24,7 +24,7 @@ def run():
     try:
         with sync_playwright() as p:
             browser=p.chromium.launch(executable_path=os.environ.get('CHROMIUM_PATH') or shutil.which('chromium'),args=['--no-sandbox'])
-            context=browser.new_context(viewport={'width':390,'height':844},bypass_csp=True)
+            context=browser.new_context(viewport={'width':390,'height':844},bypass_csp=True,has_touch=True)
             context.add_init_script(GEO)
             context.route('https://apis.openapi.sk.com/**',lambda r:r.fulfill(body=SDK,content_type='application/javascript'))
             context.route('**/api/admin',lambda r:r.fulfill(json=dict(devices=[],visitor_url='',automatic_visitor_url='')))
@@ -47,6 +47,19 @@ def run():
             # Real DOM click, independent of the SDK listener, selects a map marker.
             visitor.locator('.geo-pin[data-facility-id="2"]').click()
             assert visitor.locator('.geo-pin.selected').get_attribute('data-facility-id')=='2'
+            # Simulate an SDK overlay that consumes clicks and pointer events above visible pins.
+            visitor.evaluate("""()=>{const layer=document.createElement('div');layer.id='sdk-touch-layer';layer.style.cssText='position:absolute;inset:0;z-index:999;background:transparent';for(const type of ['click','pointerup'])layer.addEventListener(type,e=>e.stopImmediatePropagation());document.getElementById('outdoor-map').append(layer);}""")
+            for tid in ('1','2'):
+                pin=visitor.locator(f'.geo-pin[data-facility-id="{tid}"]')
+                pin.scroll_into_view_if_needed();rect=pin.bounding_box()
+                visitor.touchscreen.tap(rect['x']+rect['width']/2,rect['y']+rect['height']/2)
+                assert visitor.locator('.geo-pin.selected').get_attribute('data-facility-id')==tid
+                assert f'화장실 {chr(64+int(tid))}' in visitor.locator('#outdoor-detail').inner_text()
+            # A pan starting on a marker must not change the selected destination.
+            visitor.evaluate("""()=>{const pin=document.querySelector('.geo-pin[data-facility-id="1"]'),rect=pin.getBoundingClientRect(),layer=document.getElementById('sdk-touch-layer');layer.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,pointerId:101,isPrimary:true,clientX:rect.x+10,clientY:rect.y+10}));layer.dispatchEvent(new PointerEvent('pointerup',{bubbles:true,pointerId:101,isPrimary:true,clientX:rect.x+60,clientY:rect.y+10}));}""")
+            assert visitor.locator('.geo-pin.selected').get_attribute('data-facility-id')=='2'
+            visitor.evaluate("document.getElementById('sdk-touch-layer').remove()")
+
             visitor.locator('#geo-route').click()
             visitor.wait_for_function('document.getElementById("geo-route").textContent==="경로 지우기"')
             assert routes[-1]['toilet_id']==2
@@ -100,7 +113,7 @@ def run():
             assert state['settings']['map'].startswith('data:image/png')
             assert not errors,errors
             assert visitor.evaluate('document.documentElement.scrollWidth<=innerWidth')
-            print('PASS: DOM marker selection, route toggle, destination change, two mobile buttons, mode cancel/save, indoor upload/selection/drag, no indoor GPS/SDK, coordinate preservation')
+            print('PASS: DOM selection and mobile taps through SDK overlay, pan exclusion, route toggle, destination change, two mobile buttons, mode cancel/save, indoor upload/selection/drag, no indoor GPS/SDK, coordinate preservation')
             browser.close()
     finally:server.shutdown();server.server_close();thread.join()
 

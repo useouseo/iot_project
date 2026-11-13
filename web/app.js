@@ -429,9 +429,9 @@ $('map-mode')?.addEventListener('change',async event=>{
   }catch(error){selector.value=previous;selector.disabled=false;notice(error.message,true);}
 });
 
-const buildLabel=elem('small','화면 버전: modes-v1','app-build');document.querySelector('.map-panel').append(buildLabel);
+const buildLabel=elem('small','화면 버전: marker-v2','app-build');document.querySelector('.map-panel').append(buildLabel);
 fetch('/api/version').then(async response=>{
   const version=await response.json();
-  if(!response.ok||version.build!=='2026-11-13-modes-v1')throw new Error('서버 파일도 함께 업데이트해야 합니다. 실행 창을 종료하고 같은 폴더의 server.py와 web 폴더를 교체한 뒤 다시 실행하세요.');
-  buildLabel.textContent='화면·서버 버전: modes-v1';
+  if(!response.ok||version.build!=='2026-11-13-marker-v2')throw new Error('서버 파일도 함께 업데이트해야 합니다. 실행 창을 종료하고 같은 폴더의 server.py와 web 폴더를 교체한 뒤 다시 실행하세요.');
+  buildLabel.textContent='화면·서버 버전: marker-v2';
 }).catch(error=>{buildLabel.textContent='실행 버전 확인 필요';notice(error.message,true);});
