@@ -21,7 +21,7 @@ import threading
 import mariadb
 
 ROOT = Path(__file__).resolve().parent
-APP_BUILD = '2026-11-13-festivals-v3'
+APP_BUILD = '2026-11-13-spaces-v1'
 
 def congestion_percent(score, healthy=True):
     """Relative traffic index, not stall occupancy. 0/.8/2/4 -> 0/40/75/100."""
@@ -302,7 +302,9 @@ class Store:
                 legacy={r['key']:r['value'] for r in db.execute("SELECT * FROM settings WHERE `key` IN ('map','map_mode')")}
                 mode=legacy.get('map_mode','outdoor')
                 if mode not in ('indoor','outdoor'):mode='outdoor'
-                db.execute('INSERT IGNORE INTO festivals(id,name,mode,public_id,map) VALUES(1,?,?,?,?)',('기존 축제',mode,secrets.token_urlsafe(12),legacy.get('map')))
+                db.execute('INSERT IGNORE INTO festivals(id,name,mode,public_id,map) VALUES(1,?,?,?,?)',('기존 공간',mode,secrets.token_urlsafe(12),legacy.get('map')))
+            # Only the system-created legacy label changes; user-entered names stay intact.
+            db.execute("UPDATE festivals SET name='기존 공간' WHERE id=1 AND name='기존 축제'")
             db.execute("ALTER TABLE toilets ADD COLUMN IF NOT EXISTS festival_id INT NOT NULL DEFAULT 1")
             db.execute("ALTER TABLE toilets ADD INDEX IF NOT EXISTS idx_toilets_festival (festival_id)")
             if not db.execute("SELECT 1 FROM information_schema.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA=DATABASE() AND TABLE_NAME='toilets' AND CONSTRAINT_NAME='fk_toilets_festival'").fetchone():
@@ -468,18 +470,18 @@ class Store:
         return {'festival':festival,'toilets':result,'updated_at':now,'window_seconds':WINDOW,'demo':self.demo,'settings':settings}
 
     def festival(self,festival_id=1):
-        festival_id=integer(festival_id,1,2147483647,'축제 ID')
+        festival_id=integer(festival_id,1,2147483647,'공간 ID')
         with self.connect() as db:
             row=db.execute('SELECT * FROM festivals WHERE id=?',(festival_id,)).fetchone()
-        if not row:raise Problem(404,'축제를 찾을 수 없습니다')
-        if not row['active']:raise Problem(410,'운영이 종료된 축제입니다')
+        if not row:raise Problem(404,'공간을 찾을 수 없습니다')
+        if not row['active']:raise Problem(410,'안내가 종료된 공간입니다')
         return dict(row)
 
     def festival_by_public_id(self,public_id):
         with self.connect() as db:
             row=db.execute('SELECT * FROM festivals WHERE public_id=?',(public_id,)).fetchone()
-        if not row:raise Problem(404,'축제를 찾을 수 없습니다. QR 주소를 확인하세요')
-        if not row['active']:raise Problem(410,'운영이 종료된 축제입니다')
+        if not row:raise Problem(404,'공간을 찾을 수 없습니다. QR 주소를 확인하세요')
+        if not row['active']:raise Problem(410,'안내가 종료된 공간입니다')
         return dict(row)
 
     def list_festivals(self):
@@ -487,21 +489,21 @@ class Store:
             return [dict(r) for r in db.execute('SELECT id,name,mode,public_id FROM festivals WHERE active=1 ORDER BY id')]
 
     def delete_festival(self,festival_id,confirm_name):
-        festival_id=integer(festival_id,1,2147483647,'축제 ID')
+        festival_id=integer(festival_id,1,2147483647,'공간 ID')
         with self.connect() as db:
             # Lock active rows in a consistent order so concurrent deletions cannot remove the last festival.
             rows=db.execute('SELECT id,name FROM festivals WHERE active=1 ORDER BY id FOR UPDATE').fetchall()
             target=next((r for r in rows if r['id']==festival_id),None)
-            if not target:raise Problem(404,'삭제할 축제를 찾을 수 없습니다')
+            if not target:raise Problem(404,'삭제할 공간을 찾을 수 없습니다')
             if not isinstance(confirm_name,str) or confirm_name.strip()!=target['name']:
-                raise Problem(400,'삭제할 축제 이름을 정확히 입력하세요')
-            if len(rows)<=1:raise Problem(409,'마지막 축제는 삭제할 수 없습니다. 새 축제를 먼저 추가하세요')
+                raise Problem(400,'공간 정보가 일치하지 않습니다. 새로고침한 뒤 다시 시도하세요')
+            if len(rows)<=1:raise Problem(409,'마지막 공간은 삭제할 수 없습니다. 새 공간을 먼저 추가하세요')
             db.execute('UPDATE festivals SET active=0 WHERE id=?',(festival_id,))
             db.execute('INSERT INTO audit(at,action) VALUES(?,?)',(time.time(),f'festival archived: {festival_id}'))
             return {'deleted':True,'next_festival_id':next(r['id'] for r in rows if r['id']!=festival_id)}
 
     def create_festival(self,data):
-        name=text_value(data.get('name'),80,'축제 이름')
+        name=text_value(data.get('name'),80,'공간 이름')
         mode=data.get('mode')
         if mode not in ('indoor','outdoor'):raise Problem(400,'실내 또는 야외를 선택하세요')
         with self.connect() as db:
@@ -512,7 +514,7 @@ class Store:
         return self.festival(festival_id)['mode']
 
     def set_map_mode(self,mode,festival_id=1):
-        raise Problem(409,'운영 유형은 축제 생성 시 정합니다. 다른 유형은 새 축제로 추가하세요')
+        raise Problem(409,'운영 유형은 공간 생성 시 정합니다. 다른 유형은 새 공간으로 추가하세요')
 
     def history(self,toilet_id,now=None,festival_id=1):
         self.require_toilet(toilet_id,festival_id)
@@ -554,7 +556,7 @@ class Store:
     def require_toilet(self,tid,festival_id=1):
         with self.connect() as db:
             if not db.execute('SELECT 1 FROM toilets WHERE id=? AND festival_id=? AND active=1',(tid,festival_id)).fetchone():
-                raise Problem(404,'이 축제의 화장실을 찾을 수 없습니다')
+                raise Problem(404,'이 공간의 화장실을 찾을 수 없습니다')
 
     def simulate(self,festival_id=1):
         if not self.demo:
@@ -679,7 +681,7 @@ class App(BaseHTTPRequestHandler):
                 fid=festival['id'];p='/'
             else:
                 try:fid=int(query.get('festival_id',[str(root_store.list_festivals()[0]['id']) if p=='/admin' else '1'])[0])
-                except ValueError:raise Problem(400,'잘못된 축제 ID')
+                except ValueError:raise Problem(400,'잘못된 공간 ID')
             store=FestivalScope(root_store,fid)
             if method=='GET':
                 if p=='/api/map-config': return self.send(200,{'map_key':environment_secret('RESTFLOW_TMAP_MAP_KEY') or '', 'routing':bool(environment_secret('RESTFLOW_TMAP_ROUTE_KEY')), 'map_mode':store.map_mode()})
@@ -774,7 +776,7 @@ class App(BaseHTTPRequestHandler):
             raise Problem(404,'경로를 찾을 수 없습니다')
         except Problem as e:
             if e.status==410 and method=='GET' and (urlparse(self.path).path=='/' or urlparse(self.path).path.startswith('/f/')):
-                return self.send(410,'<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>축제 운영 종료 · RestFlow</title><link rel="stylesheet" href="/outdoor.css"><main class="festival-ended"><h1>운영이 종료된 축제입니다</h1><p>이 QR의 화장실 안내는 종료되었습니다. 현장 안내를 확인해 주세요.</p></main></html>','text/html; charset=utf-8')
+                return self.send(410,'<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>안내 종료 · RestFlow</title><link rel="stylesheet" href="/outdoor.css"><main class="festival-ended"><h1>안내가 종료된 공간입니다</h1><p>이 QR의 화장실 안내는 종료되었습니다. 현장 안내를 확인해 주세요.</p></main></html>','text/html; charset=utf-8')
             if e.status==410 and method=='GET' and urlparse(self.path).path=='/admin':
                 return self.send(303,'',headers={'Location':'/admin'})
             self.send(e.status,{'error':e.message})

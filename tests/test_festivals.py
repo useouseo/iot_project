@@ -127,7 +127,7 @@ class FestivalTests(unittest.TestCase):
             db.execute('DROP TABLE festivals')
         migrated=Store(CONFIG)
         self.assertEqual(len(migrated.list_festivals()),1)
-        self.assertEqual(migrated.festival()['name'],'기존 축제')
+        self.assertEqual(migrated.festival()['name'],'기존 공간')
         self.assertEqual(migrated.map_mode(),'indoor')
         self.assertEqual(migrated.snapshot()['settings']['map'],'data:image/png;base64,legacy-layout')
         row=migrated.snapshot()['toilets'][0]
@@ -147,7 +147,7 @@ class FestivalTests(unittest.TestCase):
         self.assertEqual(self.request(path,'DELETE',{'confirm_name':self.outdoor['name']})[0],200)
         self.assertNotIn(self.outdoor['id'],[f['id'] for f in self.store.list_festivals()])
         code,body=self.request('/f/'+self.outdoor['public_id'],admin=False)
-        self.assertEqual(code,410);self.assertIn('운영이 종료된 축제입니다',body);self.assertNotIn('야외 A',body)
+        self.assertEqual(code,410);self.assertIn('안내가 종료된 공간입니다',body);self.assertNotIn('야외 A',body)
         self.assertEqual(self.request('/api/status',festival=self.outdoor['id'])[0],410)
         with self.assertRaises(Problem) as error:self.store.ingest({'device_id':'ending-sensor'},token,heartbeat=True)
         self.assertEqual(error.exception.status,401)
@@ -193,3 +193,11 @@ class FestivalTests(unittest.TestCase):
         self.assertEqual(self.request(f'/api/toilet-info/{tid}','PUT',{'name':'bad','stalls':2},self.outdoor['id'])[0],404)
         self.assertEqual(self.request(f'/api/layout-position/{tid}','PUT',{'x':True,'y':30},fid)[0],400)
         self.assertEqual(self.request(f'/api/toilet-info/{tid}','PUT',{'name':'bad','stalls':0},fid)[0],400)
+    def test_generic_copy_migrates_only_system_default_name(self):
+        before=self.store.festival()['public_id']
+        with self.store.connect() as db:db.execute("UPDATE festivals SET name='기존 축제' WHERE id=1")
+        reloaded=Store(CONFIG)
+        self.assertEqual(reloaded.festival()['name'],'기존 공간')
+        self.assertEqual(reloaded.festival()['public_id'],before)
+        self.assertEqual(reloaded.festival(self.indoor['id'])['name'],self.indoor['name'])
+        self.assertEqual(reloaded.festival(self.outdoor['id'])['name'],self.outdoor['name'])

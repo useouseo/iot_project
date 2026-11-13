@@ -36,7 +36,10 @@ def run():
             base=f'http://127.0.0.1:{server.server_port}'
             admin.goto(base+'/admin');admin.locator('#add-festival').wait_for()
             def add_festival(name,mode):
-                admin.locator('#add-festival').click();admin.locator('#festival-name').fill(name)
+                admin.locator('#add-festival').click()
+                assert admin.locator('#festival-dialog h2').inner_text()=='새 공간 추가'
+                assert admin.locator('#create-festival').inner_text()=='공간 만들기'
+                admin.locator('#festival-name').fill(name)
                 admin.locator(f'input[name="festival-mode"][value="{mode}"]').check()
                 with admin.expect_response(lambda r:'/api/festivals' in r.url and r.request.method=='POST') as created:
                     admin.locator('#create-festival').click()
@@ -46,7 +49,7 @@ def run():
                 admin.wait_for_url('**/admin?festival_id='+str(fid))
                 admin.wait_for_function('document.getElementById("festival-select").value==='+json.dumps(str(fid)))
                 return int(admin.url.rsplit('=',1)[1])
-            indoor_id=add_festival('별빛 실내 축제','indoor')
+            indoor_id=add_festival('전시관','indoor')
             assert store.snapshot(festival_id=indoor_id)['toilets']==[]
             admin.evaluate("window.openAdminView('facilities')")
             assert admin.locator('#map-surface').is_visible();assert not admin.locator('.outdoor-section').is_visible()
@@ -96,7 +99,7 @@ def run():
             assert inside_url=='https://festival.example.org/f/'+indoor['public_id']
             visitor=context.new_page();visitor.on('pageerror',lambda e:errors.append(str(e)));visitor.goto(base+'/f/'+indoor['public_id'])
             visitor.locator('#markers .marker').wait_for()
-            assert visitor.locator('#subtitle').inner_text()=='별빛 실내 축제'
+            assert visitor.locator('#subtitle').inner_text()=='전시관'
             assert visitor.locator('#cards').inner_text().find('실내 새 이름')>=0
             assert visitor.evaluate('testGeo.calls')==0
             assert not visitor.evaluate('Boolean(window.Tmapv2)')
@@ -104,10 +107,11 @@ def run():
             admin.select_option('#festival-select','1');admin.wait_for_url('**/admin?festival_id=1')
             admin.wait_for_function('Boolean(window.openAdminView)');admin.wait_for_function('document.getElementById("festival-select").value==="1"')
             assert len(store.snapshot()['toilets'])==2
+            assert admin.locator('.map-heading h2').inner_text().startswith('지도')
             assert admin.locator('#visitor-link').get_attribute('href')=='/f/'+store.festival()['public_id']
             admin.evaluate("window.openAdminView('qr')");admin.locator('#qr-button').click();admin.locator('#qr-result').wait_for()
             assert admin.locator('#qr-destination').inner_text()!=inside_url
-            outdoor_id=add_festival('봄빛 야외 축제','outdoor')
+            outdoor_id=add_festival('중앙공원','outdoor')
             admin.evaluate("window.openAdminView('facilities')")
             admin.locator('#new-toilet-name').fill('야외 전용 화장실');admin.locator('#new-toilet-form button').click()
             admin.locator('.geo-pin.unplaced').wait_for()
@@ -124,7 +128,7 @@ def run():
                 assert json.loads(tmap.call_args.args[0].data)['endX']==126.99
             outdoor_visitor.locator('#geo-route').click();assert outdoor_visitor.locator('#geo-route').inner_text()=='길찾기'
             assert outdoor_visitor.locator('.outdoor-tools button').count()==2
-            assert visitor.locator('#subtitle').inner_text()=='별빛 실내 축제'
+            assert visitor.locator('#subtitle').inner_text()=='전시관'
             visitor.reload();visitor.locator('#markers .marker').wait_for()
             assert visitor.locator('#cards').inner_text().find('실내 새 이름')>=0
             reloaded=Store(config)
@@ -137,8 +141,8 @@ def run():
             assert len(store.list_festivals())==3
             admin.once('dialog',lambda d:d.accept());admin.locator('#delete-festival').click()
             admin.wait_for_url('**/admin?festival_id=1')
-            outdoor_visitor.get_by_text('운영이 종료된 축제입니다').wait_for(timeout=12000)
-            assert visitor.locator('#subtitle').inner_text()=='별빛 실내 축제'
+            outdoor_visitor.get_by_text('안내가 종료된 공간입니다').wait_for(timeout=12000)
+            assert visitor.locator('#subtitle').inner_text()=='전시관'
             assert len(store.list_festivals())==2
             admin.wait_for_function('!document.getElementById("festival-select").disabled')
             admin.once('dialog',lambda d:d.accept());admin.locator('#delete-festival').click()

@@ -67,15 +67,15 @@ window.restflowIcon = name => '<svg class="ui-icon" viewBox="0 0 24 24" fill="no
   const button=make('button','side-link',`<span aria-hidden="true">${icons(key)}</span>${title}`);button.type='button';button.dataset.view=key;(key==='settings'?sidebar.querySelector('.sidebar-bottom'):nav).append(button);button.addEventListener('click',()=>window.openAdminView(key));
  }
  byId('logout').innerHTML=icons('logout')+'로그아웃';sidebar.querySelector('.sidebar-bottom').append(byId('logout'));
- const header=document.querySelector('header');const event=make('div','event-context',`<label class="mode-control" for="festival-select">목록<select id="festival-select" aria-label="축제 목록" disabled><option value="">불러오는 중</option></select></label><span id="festival-kind" class="festival-kind"></span><button type="button" id="add-festival" class="secondary" disabled>추가</button><button type="button" id="delete-festival" class="secondary danger" disabled>삭제</button><span id="demo-chip" class="demo-chip" hidden><b></b>시연 모드</span>`);header.prepend(event);byId('visitor-link').innerHTML=icons('external')+'방문객 화면';
- const festivalDialog=make('dialog','festival-dialog','<form id="festival-form"><h2>새 축제 추가</h2><label>축제 이름<input id="festival-name" maxlength="80" required placeholder="예: 별빛 실내 축제"></label><fieldset class="festival-types"><legend>운영 유형</legend><label><input type="radio" name="festival-mode" value="outdoor" required checked><strong>야외</strong><small>실제 지도 · 도보 길찾기</small></label><label><input type="radio" name="festival-mode" value="indoor" required><strong>실내</strong><small>배치도 업로드 · 혼잡도</small></label></fieldset><p>지도·화장실·센서·QR은 축제별로 따로 관리됩니다.</p><div class="festival-dialog-actions"><button id="cancel-festival" type="button" class="secondary">취소</button><button id="create-festival" class="primary" type="submit">축제 만들기</button></div><p id="festival-form-error" role="alert" hidden></p></form>');festivalDialog.id='festival-dialog';document.body.append(festivalDialog);
+ const header=document.querySelector('header');const event=make('div','event-context',`<label class="mode-control" for="festival-select">목록<select id="festival-select" aria-label="공간 목록" disabled><option value="">불러오는 중</option></select></label><span id="festival-kind" class="festival-kind"></span><button type="button" id="add-festival" class="secondary" disabled>추가</button><button type="button" id="delete-festival" class="secondary danger" disabled>삭제</button><span id="demo-chip" class="demo-chip" hidden><b></b>시연 모드</span>`);header.prepend(event);byId('visitor-link').innerHTML=icons('external')+'방문객 화면';
+ const festivalDialog=make('dialog','festival-dialog','<form id="festival-form"><h2>새 공간 추가</h2><label>공간 이름<input id="festival-name" maxlength="80" required placeholder="예: 중앙공원, 전시관, 쇼핑몰"></label><fieldset class="festival-types"><legend>운영 유형</legend><label><input type="radio" name="festival-mode" value="outdoor" required checked><strong>야외</strong><small>실제 지도 · 도보 길찾기</small></label><label><input type="radio" name="festival-mode" value="indoor" required><strong>실내</strong><small>배치도 업로드 · 혼잡도</small></label></fieldset><p>지도·화장실·센서·QR은 공간별로 따로 관리됩니다.</p><div class="festival-dialog-actions"><button id="cancel-festival" type="button" class="secondary">취소</button><button id="create-festival" class="primary" type="submit">공간 만들기</button></div><p id="festival-form-error" role="alert" hidden></p></form>');festivalDialog.id='festival-dialog';document.body.append(festivalDialog);
 
  const metrics=make('div','metrics');['등록 화장실','센서 연결','혼잡 시설','확인 필요'].forEach((title,i)=>metrics.append(make('div','metric',`<i aria-hidden="true">${icons(['facilities','wifi','users','alert'][i])}</i><div><span>${title}</span><strong>—</strong></div>`)));views.overview.append(metrics);
  const layout=document.querySelector('.layout');
  const workspaceHeading=document.querySelector('#workspace > .section-heading');workspaceHeading.remove();
  views.overview.append(layout);
  const mapPanel=document.querySelector('.map-panel');
- const mapTitle=make('div','map-heading','<h2>행사장 지도 <span class="badge">예시 배치도</span></h2><button type="button" class="secondary" id="edit-map-link">지도 편집</button>');mapPanel.prepend(mapTitle);
+ const mapTitle=make('div','map-heading','<h2>지도 <span class="badge">예시 배치도</span></h2><button type="button" class="secondary" id="edit-map-link">지도 편집</button>');mapPanel.prepend(mapTitle);
  byId('edit-map-link').innerHTML=icons('pencil')+'지도 편집';
  const addFacility=make('button','primary add-facility',icons('plus')+'시설 추가');addFacility.type='button';document.querySelector('.aside-title').append(addFacility);addFacility.addEventListener('click',()=>{window.openAdminView('facilities');byId('new-toilet-name').scrollIntoView({block:'center'});byId('new-toilet-name').focus();});
  byId('edit-map-link').addEventListener('click',()=>window.openAdminView('facilities'));
@@ -88,7 +88,7 @@ window.restflowIcon = name => '<svg class="ui-icon" viewBox="0 0 24 24" fill="no
  const facilitiesGrid=make('div','facilities-grid');views.facilities.append(facilitiesGrid);
  const mapSlot=make('div','edit-map-slot');facilitiesGrid.append(mapSlot);
  const formStack=make('div','form-stack');facilitiesGrid.append(formStack);formStack.append(editPanel,addPanel);
- const upload=document.querySelector('.upload-label');mapPanel.insertBefore(upload,byId('map-editor'));upload.firstChild.textContent='행사장 배치도 변경 ';
+ const upload=document.querySelector('.upload-label');mapPanel.insertBefore(upload,byId('map-editor'));upload.firstChild.textContent='배치도 변경 ';
  editPanel.querySelector('h3').textContent='화장실 정보 및 위치';
  byId('toilet-form').querySelector('button').textContent='변경사항 저장';
  byId('save-position').textContent='위치 저장';byId('save-position').hidden=false;byId('undo-position').textContent='위치 되돌리기';byId('map-editor').append(document.querySelector('.coordinate-details'));
@@ -209,7 +209,7 @@ function finishDrag(event,cancelled=false) {
 }
 function render() {
   if(!snapshot||drag)return;
-  if(snapshot.festival&&snapshot.festival.id!==activeFestivalId){notice('축제 정보가 일치하지 않습니다. 서버와 화면 파일을 함께 업데이트하세요.',true);return;}
+  if(snapshot.festival&&snapshot.festival.id!==activeFestivalId){notice('공간 정보가 일치하지 않습니다. 서버와 화면 파일을 함께 업데이트하세요.',true);return;}
   const mode=snapshot.settings.map_mode||'outdoor';
   if(!adminPage&&snapshot.festival){$('subtitle').textContent=snapshot.festival.name;document.title=snapshot.festival.name+' · RestFlow';}
   if(renderedMode!==null&&renderedMode!==mode){
@@ -228,7 +228,7 @@ function render() {
   const cardScroll=$('cards').scrollTop;
   $('markers').replaceChildren();$('cards').replaceChildren();
   $('toilet-count').textContent=`총 ${snapshot.toilets.length}곳`;
-  if(!snapshot.toilets.length)$('cards').append(elem('p','아직 등록된 화장실이 없습니다. 행사장 현장 안내를 확인해 주세요.','empty'));
+  if(!snapshot.toilets.length)$('cards').append(elem('p','아직 등록된 화장실이 없습니다. 현장 안내를 확인해 주세요.','empty'));
   const online=snapshot.toilets.filter(t=>t.online).length;
   $('connection').textContent=`${online}/${snapshot.toilets.length}곳 센서 연결`;
   $('updated').textContent=`${localTime(snapshot.updated_at)} KST 갱신`;
@@ -338,7 +338,7 @@ async function showAdmin(){
   const festivals=await api('/api/festivals');
   const options=festivals.map(festival=>{const option=document.createElement('option');option.value=festival.id;option.textContent=festival.name+' · '+(festival.mode==='indoor'?'실내':'야외');return option;});
   $('festival-select').replaceChildren(...options);$('festival-select').value=String(activeFestivalId);$('festival-select').disabled=false;$('add-festival').disabled=false;$('delete-festival').disabled=festivals.length<=1;
-  $('delete-festival').title=festivals.length<=1?'마지막 축제는 삭제할 수 없습니다. 새 축제를 먼저 추가하세요.':'현재 선택한 축제 삭제';
+  $('delete-festival').title=festivals.length<=1?'마지막 공간은 삭제할 수 없습니다. 새 공간을 먼저 추가하세요.':'현재 선택한 공간 삭제';
   $('visitor-link').href='/f/'+document.body.dataset.festivalPublicId;
   $('visitor-url').value=settings.automatic_visitor_url||settings.visitor_url||location.origin+'/f/'+document.body.dataset.festivalPublicId;updateQrHint();
   $('admin-password').value='';$('login-panel').hidden=true;$('workspace').hidden=false;$('admin-panel').hidden=false;
@@ -411,12 +411,12 @@ $('map-upload').addEventListener('change',()=>action(async()=>{
   const f=$('map-upload').files[0];if(!f)return;
   if(f.size>2_000_000||!['image/png','image/jpeg'].includes(f.type))throw new Error('2MB 이하 PNG/JPEG 파일을 선택하세요.');
   const image=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(new Error('파일을 읽지 못했습니다'));r.readAsDataURL(f);});
-  await api('/api/map','PUT',{image});notice('행사장 배치도를 저장했습니다.');await refresh();
+  await api('/api/map','PUT',{image});notice('배치도를 저장했습니다.');await refresh();
 }));
 $('reset').addEventListener('click',()=>{if(confirm('선택한 화장실의 현재 혼잡도 계산 구간을 초기화할까요? 원본 통행 기록은 유지됩니다.'))action(async()=>{await api('/api/reset','POST',{toilet_id:selected});notice('계산 구간을 초기화했습니다.');await refresh();});});
 $('simulate').addEventListener('click',()=>action(async()=>{await api('/api/demo','POST',{});notice('시연 통행 데이터를 추가했습니다.');await refresh();}));
 function updateQrHint() {
-  $('qr-url-hint').textContent='현재 선택한 축제 전용 QR입니다. 다른 축제를 선택해도 이 QR의 방문객 화면은 바뀌지 않습니다. 임시 공개 주소가 바뀌면 QR을 다시 생성하세요.';
+  $('qr-url-hint').textContent='현재 선택한 공간 전용 QR입니다. 다른 공간을 선택해도 이 QR의 방문객 화면은 바뀌지 않습니다. 임시 공개 주소가 바뀌면 QR을 다시 생성하세요.';
 }
 function dataUrl(blob) {
   return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('QR 이미지를 읽지 못했습니다'));reader.readAsDataURL(blob);});
@@ -449,11 +449,11 @@ window.discardRestflowEdits=discardFestivalEdits;
 $('festival-select')?.addEventListener('change',event=>{
   const next=Number(event.target.value);
   if(!next||next===activeFestivalId)return;
-  if(window.hasUnsavedDesignChanges?.()&&!confirm('저장하지 않은 변경사항을 버리고 다른 축제로 이동할까요?')){event.target.value=String(activeFestivalId);return;}
+  if(window.hasUnsavedDesignChanges?.()&&!confirm('저장하지 않은 변경사항을 버리고 다른 공간으로 이동할까요?')){event.target.value=String(activeFestivalId);return;}
   discardFestivalEdits();location.assign('/admin?festival_id='+next);
 });
 $('add-festival')?.addEventListener('click',()=>{
-  if(window.hasUnsavedDesignChanges?.()&&!confirm('저장하지 않은 변경사항을 버리고 축제를 추가할까요?'))return;
+  if(window.hasUnsavedDesignChanges?.()&&!confirm('저장하지 않은 변경사항을 버리고 공간을 추가할까요?'))return;
   discardFestivalEdits();$('festival-form').reset();$('festival-form-error').hidden=true;$('festival-dialog').showModal();$('festival-name').focus();
 });
 $('cancel-festival')?.addEventListener('click',()=>$('festival-dialog').close());
@@ -466,7 +466,7 @@ $('festival-form')?.addEventListener('submit',async event=>{
 });
 
 $('delete-festival')?.addEventListener('click',async()=>{
-  if(!confirm(`정말 “${document.body.dataset.festivalName}” 축제를 삭제할까요?`))return;
+  if(!confirm(`정말 “${document.body.dataset.festivalName}” 공간을 삭제할까요?`))return;
   $('delete-festival').disabled=true;
   try{
     const result=await api('/api/festivals/'+activeFestivalId,'DELETE',{confirm_name:document.body.dataset.festivalName});
@@ -474,9 +474,9 @@ $('delete-festival')?.addEventListener('click',async()=>{
   }catch(error){$('delete-festival').disabled=false;notice(error.message,true);}
 });
 
-const buildLabel=elem('small','화면 버전: festivals-v3','app-build');document.querySelector('.map-panel').append(buildLabel);
+const buildLabel=elem('small','화면 버전: spaces-v1','app-build');document.querySelector('.map-panel').append(buildLabel);
 fetch('/api/version').then(async response=>{
   const version=await response.json();
-  if(!response.ok||version.build!=='2026-11-13-festivals-v3')throw new Error('서버 파일도 함께 업데이트해야 합니다. 실행 창을 종료하고 같은 폴더의 server.py와 web 폴더를 교체한 뒤 다시 실행하세요.');
-  buildLabel.textContent='화면·서버 버전: festivals-v3';
+  if(!response.ok||version.build!=='2026-11-13-spaces-v1')throw new Error('서버 파일도 함께 업데이트해야 합니다. 실행 창을 종료하고 같은 폴더의 server.py와 web 폴더를 교체한 뒤 다시 실행하세요.');
+  buildLabel.textContent='화면·서버 버전: spaces-v1';
 }).catch(error=>{buildLabel.textContent='실행 버전 확인 필요';notice(error.message,true);});
