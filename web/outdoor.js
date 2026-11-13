@@ -4,7 +4,8 @@
   const panel=document.querySelector('.map-panel');
   const box=document.createElement('section');box.className='outdoor-section';
   box.innerHTML='<div id="outdoor-map" aria-label="야외 화장실 지도"></div><div class="outdoor-tools"><button id="geo-locate" class="secondary">내 위치 확인</button><button id="geo-route" class="primary" disabled>길찾기</button></div><p id="outdoor-message" role="status">지도를 준비하고 있습니다.</p><div id="outdoor-detail"></div><form id="geo-editor" hidden><strong id="geo-editor-title">선택한 화장실 입구 위치</strong><p>마커를 누른 채 끌어서 입구에 놓고 위치 저장을 누르세요. 새 화장실은 지도 중앙의 반투명 마커를 옮기면 됩니다.</p><details class="geo-coordinate-fields"><summary>좌표 직접 입력 (선택)</summary><label>위도<input id="geo-lat" type="number" step="any" min="-90" max="90" required></label><label>경도<input id="geo-lng" type="number" step="any" min="-180" max="180" required></label></details><button id="geo-save" class="primary">위치 저장</button><button id="geo-undo" class="secondary" type="button" disabled>위치 되돌리기</button><p id="geo-draft-state" role="status"></p></form>';
-  panel.prepend(box);
+  const heading=panel.querySelector('.map-heading');
+  if(heading)heading.after(box);else panel.prepend(box);
   const $=id=>document.getElementById(id);
   const labels={quiet:'여유',moderate:'보통',busy:'혼잡',unknown:'확인 필요'};
   let routePending=false, map, sdk, data, selected, editing=false, markers=[], routeLines=[], routeController, sequence=0, position, locationMarker, accuracyCircle, watch, selectedBefore, fitted=false, routing=false;

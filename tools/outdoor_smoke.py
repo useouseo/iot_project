@@ -59,6 +59,13 @@ def run():
             page.evaluate("window.openAdminView('facilities')")
             page.locator('.geo-pin.selected').wait_for()
             assert page.locator('.geo-pin.selected .geo-letter').inner_text()=='A'
+            heading=page.locator('.map-heading').bounding_box();map_box=page.locator('#outdoor-map').bounding_box()
+            assert heading['y']+heading['height']<=map_box['y']+1
+            panels=page.locator('.form-stack>.panel')
+            assert panels.nth(0).bounding_box()['height']<500
+            assert panels.nth(1).bounding_box()['y']<map_box['y']+map_box['height']+200
+            assert not page.locator('.outdoor-tools').is_visible()
+
             def drag(lat,lng):
                 page.evaluate('''([lat,lng])=>{const marker=testMarkers.findLast(m=>!m.removed&&m.options.draggable);marker.emit('dragstart');window.rerenderRestflow();if(marker.removed)throw Error('Refresh removed a dragging marker');marker.point=new Tmapv2.LatLng(lat,lng);marker.emit('dragend');}''',[lat,lng])
                 page.wait_for_function('window.outdoor.hasDraft()')
