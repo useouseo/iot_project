@@ -90,3 +90,6 @@
 .event-context #festival-kind,.event-context #demo-chip{margin:0;align-self:center}
 .signed-in header nav{flex-shrink:0;align-self:center}
 @media(max-width:600px){.event-context #festival-select,.event-context #add-festival,.event-context #delete-festival{height:34px;font-size:11px;padding:6px 9px}}
+
+/* Visitor maps end after location/route guidance; details are already in the facility list. */
+.visitor-page #outdoor-detail,.visitor-page .map-footer,.visitor-page .app-build{display:none!important}
