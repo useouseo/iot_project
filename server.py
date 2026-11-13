@@ -13,7 +13,7 @@ import secrets
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from http.cookies import SimpleCookie, CookieError
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, quote
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 import threading
@@ -558,7 +558,12 @@ class App(BaseHTTPRequestHandler):
                 if p in allowed:
                     f=ROOT/'web'/allowed[p]
                     types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.woff2':'font/woff2'}
-                    return self.send(200,f.read_bytes(),types[f.suffix])
+                    body=f.read_bytes()
+                    if f.name=='index.html':
+                        key=environment_secret('RESTFLOW_TMAP_MAP_KEY') or ''
+                        sdk=('<script src="https://apis.openapi.sk.com/tmap/jsv2?version=1&amp;appKey='+quote(key,safe='')+'"></script>') if key else ''
+                        body=body.replace(b'<!--TMAP_SDK-->',sdk.encode('utf-8'))
+                    return self.send(200,body,types[f.suffix])
                 raise Problem(404,'경로를 찾을 수 없습니다')
             data={} if method=='DELETE' else self.body()
             if method=='POST' and p=='/api/login':

@@ -72,7 +72,7 @@
     try{
       const config=await request('/api/map-config');routing=config.routing;
       if(!config.map_key){message('TMAP 지도 설정이 필요합니다. 관리자가 지도 API 키를 설정하면 표시됩니다.');return;}
-      await new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='https://apis.openapi.sk.com/tmap/jsv2?version=1&appKey='+encodeURIComponent(config.map_key);script.onload=resolve;script.onerror=()=>reject(Error('TMAP 지도를 불러오지 못했습니다. API 키와 허용 도메인을 확인하세요.'));document.head.append(script);});
+
       sdk=window.Tmapv2;if(!sdk)throw Error('TMAP 지도 인증을 확인하세요.');
       map=new sdk.Map('outdoor-map',{center:new sdk.LatLng(37.5665,126.978),width:'100%',height:'100%',zoom:15});
       map.addListener('click',event=>{if(!editing||!current())return;$('geo-lat').value=event.latLng.lat();$('geo-lng').value=event.latLng.lng();message('입구 위치를 지정했습니다. 입구 위치 저장을 눌러주세요.');});
