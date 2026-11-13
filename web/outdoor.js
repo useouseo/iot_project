@@ -2,8 +2,8 @@
 (() => {
   'use strict';
   const panel=document.querySelector('.map-panel');
-  const box=document.createElement('section');
-  box.innerHTML='<div id="outdoor-map" aria-label="야외 화장실 지도"></div><div class="outdoor-tools"><button id="geo-locate" class="secondary">내 위치 확인</button><button id="geo-route" class="primary" disabled>선택한 화장실 길찾기</button><button id="geo-clear" class="secondary" hidden>경로 지우기</button></div><p id="outdoor-message" role="status">지도를 준비하고 있습니다.</p><div id="outdoor-detail"></div><form id="geo-editor" hidden><strong id="geo-editor-title">선택한 화장실 입구 위치</strong><p>마커를 누른 채 끌어서 입구에 놓고 위치 저장을 누르세요. 새 화장실은 지도 중앙의 반투명 마커를 옮기면 됩니다.</p><details class="geo-coordinate-fields"><summary>좌표 직접 입력 (선택)</summary><label>위도<input id="geo-lat" type="number" step="any" min="-90" max="90" required></label><label>경도<input id="geo-lng" type="number" step="any" min="-180" max="180" required></label></details><button id="geo-save" class="primary">위치 저장</button><button id="geo-undo" class="secondary" type="button" disabled>위치 되돌리기</button><p id="geo-draft-state" role="status"></p></form>';
+  const box=document.createElement('section');box.className='outdoor-section';
+  box.innerHTML='<div id="outdoor-map" aria-label="야외 화장실 지도"></div><div class="outdoor-tools"><button id="geo-locate" class="secondary">내 위치 확인</button><button id="geo-route" class="primary" disabled>길찾기</button></div><p id="outdoor-message" role="status">지도를 준비하고 있습니다.</p><div id="outdoor-detail"></div><form id="geo-editor" hidden><strong id="geo-editor-title">선택한 화장실 입구 위치</strong><p>마커를 누른 채 끌어서 입구에 놓고 위치 저장을 누르세요. 새 화장실은 지도 중앙의 반투명 마커를 옮기면 됩니다.</p><details class="geo-coordinate-fields"><summary>좌표 직접 입력 (선택)</summary><label>위도<input id="geo-lat" type="number" step="any" min="-90" max="90" required></label><label>경도<input id="geo-lng" type="number" step="any" min="-180" max="180" required></label></details><button id="geo-save" class="primary">위치 저장</button><button id="geo-undo" class="secondary" type="button" disabled>위치 되돌리기</button><p id="geo-draft-state" role="status"></p></form>';
   panel.prepend(box);
   const $=id=>document.getElementById(id);
   const labels={quiet:'여유',moderate:'보통',busy:'혼잡',unknown:'확인 필요'};
@@ -16,9 +16,10 @@
     const response=await fetch(path,{method,headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined,signal:signal||AbortSignal.timeout(15000)});
     const result=await response.json();if(!response.ok)throw Error(result.error||'요청에 실패했습니다');return result;
   }
-  function clearRoute(){sequence++;routeController?.abort();routeLines.forEach(l=>l.setMap(null));routeLines=[];$('geo-clear').hidden=true;}
+  function clearRoute(){sequence++;routeController?.abort();routeLines.forEach(l=>l.setMap(null));routeLines=[];routePending=false;$('geo-route').textContent='길찾기';}
   function update(snapshot,id,isEditing){
     data=snapshot;selected=id;editing=isEditing;
+    if((snapshot.settings.map_mode||'outdoor')==='indoor'){clearRoute();if(watch!==undefined)navigator.geolocation.clearWatch(watch);watch=undefined;draft=null;return;}
     if(selectedBefore!==selected||!editing){draft=null;draggingMarker=false;markerSignature='';}
     if(selectedBefore!==selected){clearRoute();selectedBefore=selected;$('geo-editor').reset();}
     $('geo-editor').hidden=!editing;
@@ -27,7 +28,8 @@
     $('geo-editor-title').textContent=t?`${t.name} · 입구 위치`:'화장실을 먼저 추가하세요';
     $('outdoor-detail').replaceChildren();
     if(t){const title=document.createElement('strong');title.textContent=t.name;const p=document.createElement('p');p.textContent=`${labels[t.level]} · ${located(t)?'입구 위치 등록됨':'입구 위치 미등록 — 관리자 등록 후 길찾기 가능'}`;$('outdoor-detail').append(title,p);}
-    $('geo-route').disabled=routePending||Boolean(draft)||!map||!routing||!located(t)||!position;
+    $('geo-route').textContent=routeLines.length?'경로 지우기':routePending?'경로 찾는 중…':'길찾기';
+    $('geo-route').disabled=routePending||(!routeLines.length&&(Boolean(draft)||!map||!routing||!located(t)||!position));
     $('geo-save').disabled=!t||!draft; $('geo-undo').disabled=!draft;
     $('geo-draft-state').textContent=draft?'위치를 변경했습니다. 아직 저장되지 않았습니다.':located(t)?'저장된 입구 위치입니다. 마커를 드래그해 수정하세요.':'입구 위치가 없습니다. 지도 중앙의 마커를 옮겨 저장하세요.';
     if(editing&&document.activeElement?.closest('#geo-editor')===null&&!$('geo-lat').value&&located(t)){$('geo-lat').value=t.latitude;$('geo-lng').value=t.longitude;}
@@ -48,7 +50,7 @@
       const point=draft?.id===facility.id?new sdk.LatLng(draft.latitude,draft.longitude):located(facility)?new sdk.LatLng(facility.latitude,facility.longitude):map.getCenter();
       const pin=document.createElement('button');
       pin.className=`geo-pin ${facility.level}${isSelected?' selected':''}${unplaced?' unplaced':''}`;
-      pin.type='button';pin.setAttribute('aria-label',`${facility.name}, ${labels[facility.level]}${editing?' · 드래그하여 입구 위치 지정':''}`);
+      pin.dataset.facilityId=facility.id;pin.type='button';pin.setAttribute('aria-label',`${facility.name}, ${labels[facility.level]}${editing?' · 드래그하여 입구 위치 지정':''}`);
       pin.title=facility.name+(editing?' · 드래그하여 위치 이동':'');
       const letter=document.createElement('span');letter.className='geo-letter';letter.textContent=index<26?String.fromCharCode(65+index):String(index+1);
       const status=document.createElement('small');status.textContent=unplaced?'미등록':labels[facility.level];pin.append(letter,status);
@@ -80,13 +82,18 @@
   }
   function discard(){draft=null;draggingMarker=false;markerSignature='';$('geo-editor').reset();const t=current();if(located(t)){$('geo-lat').value=t.latitude;$('geo-lng').value=t.longitude;}if(data)update(data,selected,editing);}
   window.outdoor={update,hasDraft:()=>Boolean(draft),discard};
+  $('outdoor-map').addEventListener('click',event=>{
+    const pin=event.target.closest('[data-facility-id]');
+    if(!pin||draggingMarker||performance.now()<suppressMapClickUntil)return;
+    event.stopPropagation();
+    window.chooseOutdoorFacility(Number(pin.dataset.facilityId));
+  });
   $('geo-undo').onclick=()=>{discard();message('저장된 위치로 되돌렸습니다.');};
   $('geo-editor').addEventListener('input',()=>{
     const lat=$('geo-lat'),lng=$('geo-lng');
     if(lat.value!==''&&lng.value!==''&&lat.validity.valid&&lng.validity.valid)setDraft({lat:()=>Number(lat.value),lng:()=>Number(lng.value)});
   });
   new ResizeObserver(()=>{if(map&&map.resize)map.resize();}).observe($('outdoor-map'));
-  $('geo-clear').onclick=()=>{clearRoute();message('경로를 지웠습니다.');};
   $('geo-editor').onsubmit=async e=>{
     e.preventDefault();if(!current())return;
     const tid=selected,latitude=Number($('geo-lat').value),longitude=Number($('geo-lng').value);
@@ -131,6 +138,7 @@
   }
   $('geo-locate').onclick=locate;
   $('geo-route').onclick=async()=>{
+    if(routeLines.length){clearRoute();message('경로를 지웠습니다. 다른 화장실을 선택하거나 길찾기를 다시 누르세요.');if(data)update(data,selected,editing);return;}
     if(!position||!located(current()))return;
     clearRoute();routePending=true;const token=sequence;routeController=new AbortController();let timer;$('geo-route').disabled=true;message('도보 경로를 찾고 있습니다.');
     try{
@@ -152,18 +160,19 @@
       if(token!==sequence)return;
       for(const line of result.lines)routeLines.push(new sdk.Polyline({path:line.map(([lng,lat])=>new sdk.LatLng(lat,lng)),strokeColor:'#1469d5',strokeWeight:6,map}));
       const bounds=new sdk.LatLngBounds();result.lines.flat().forEach(([lng,lat])=>bounds.extend(new sdk.LatLng(lat,lng)));map.fitBounds(bounds);
-      message(`${warnings.length?'위치 오차에 따라 출발점이 다를 수 있습니다. ':''}도보 ${Number.isFinite(result.distance)?Math.round(result.distance)+'m':''} · ${Number.isFinite(result.seconds)?'약 '+Math.ceil(result.seconds/60)+'분':''}. 임시 통로·통제 구간은 현장 안내를 확인하세요. 이동 후 경로를 다시 조회할 수 있습니다.`);$('geo-clear').hidden=false;
+      message(`${warnings.length?'위치 오차에 따라 출발점이 다를 수 있습니다. ':''}도보 ${Number.isFinite(result.distance)?Math.round(result.distance)+'m':''} · ${Number.isFinite(result.seconds)?'약 '+Math.ceil(result.seconds/60)+'분':''}. 임시 통로·통제 구간은 현장 안내를 확인하세요. 이동 후 경로를 다시 조회할 수 있습니다.`);
     }catch(e){if(token===sequence)message(e.name==='AbortError'?'길찾기 시간이 초과되었습니다. 다시 시도하세요.':e.message);}
-    finally{routePending=false;clearTimeout(timer);if(data)update(data,selected,editing);}
+    finally{clearTimeout(timer);if(token===sequence){routePending=false;if(data)update(data,selected,editing);}}
   };
   async function init(){
     try{
       const config=await request('/api/map-config');routing=config.routing;
+      if(config.map_mode==='indoor')return;
       if(!config.map_key){message('TMAP 지도 설정이 필요합니다. 관리자가 지도 API 키를 설정하면 표시됩니다.');return;}
 
       sdk=window.Tmapv2;if(!sdk)throw Error('TMAP 지도 인증을 확인하세요.');
       map=new sdk.Map('outdoor-map',{center:new sdk.LatLng(37.5665,126.978),width:'100%',height:getComputedStyle($('outdoor-map')).height,zoom:15});
-      map.addListener('click',event=>{if(!editing||!current()||draggingMarker||performance.now()<suppressMapClickUntil)return;setDraft(event.latLng);});
+      map.addListener('click',event=>{if(event.originalEvent?.target?.closest?.('[data-facility-id]'))return;if(!editing||!current()||draggingMarker||performance.now()<suppressMapClickUntil)return;setDraft(event.latLng);});
       message(routing?'화장실을 선택해 도보 경로를 확인하세요.':'지도는 준비되었습니다. 도보 길찾기 API 설정이 필요합니다.');if(data)update(data,selected,editing);
       if(location.pathname!=='/admin')locate();
     }catch(e){message(e.message);}

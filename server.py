@@ -21,6 +21,7 @@ import threading
 import mariadb
 
 ROOT = Path(__file__).resolve().parent
+APP_BUILD = '2026-11-13-modes-v1'
 
 def congestion_percent(score, healthy=True):
     """Relative traffic index, not stall occupancy. 0/.8/2/4 -> 0/40/75/100."""
@@ -211,7 +212,10 @@ def pedestrian_route(store, data):
     lat = geo_coordinate(data.get('latitude'), -90, 90)
     lng = geo_coordinate(data.get('longitude'), -180, 180)
     tid = integer(data.get('toilet_id'), 1, 2147483647, '화장실 ID')
-    target = next((t for t in store.snapshot()['toilets'] if t['id'] == tid), None)
+    snapshot=store.snapshot()
+    if snapshot.get('settings',{}).get('map_mode','outdoor')=='indoor':
+        raise Problem(409, '실내 모드에서는 도보 길찾기를 사용하지 않습니다')
+    target = next((t for t in snapshot['toilets'] if t['id'] == tid), None)
     if not target:
         raise Problem(404, '화장실을 찾을 수 없습니다')
     if target['latitude'] is None or target['longitude'] is None:
@@ -436,8 +440,21 @@ class Store:
                 level = ('busy' if score>=2 else 'moderate' if score>=.8 else 'quiet') if healthy else 'unknown'
                 t.update(level=level,online=online,congestion_percent=congestion_percent(score,healthy),score=round(score,2),entries=ins,exits=outs,previous_entries=prev)
                 result.append(t)
-            settings={r['key']:r['value'] for r in db.execute("SELECT * FROM settings WHERE `key` IN ('map','visitor_url')")}
+            settings={r['key']:r['value'] for r in db.execute("SELECT * FROM settings WHERE `key` IN ('map','visitor_url','map_mode')")}
+        settings.setdefault('map_mode','outdoor')
         return {'toilets':result,'updated_at':now,'window_seconds':WINDOW,'demo':self.demo,'settings':settings}
+
+    def map_mode(self):
+        with self.connect() as db:
+            row=db.execute("SELECT value FROM settings WHERE `key`='map_mode'").fetchone()
+        return row['value'] if row and row['value'] in ('indoor','outdoor') else 'outdoor'
+
+    def set_map_mode(self,mode):
+        if mode not in ('indoor','outdoor'):
+            raise Problem(400,'실내 또는 야외 모드를 선택하세요')
+        with self.connect() as db:
+            db.execute("INSERT INTO settings VALUES('map_mode',?) ON DUPLICATE KEY UPDATE `value`=VALUES(`value`)",(mode,))
+        return {'saved':True,'map_mode':mode}
 
     def history(self,toilet_id,now=None):
         now=time.time() if now is None else now
@@ -538,7 +555,8 @@ class App(BaseHTTPRequestHandler):
         try:
             route=urlparse(self.path);p=route.path;store=self.server.store
             if method=='GET':
-                if p=='/api/map-config': return self.send(200,{'map_key':environment_secret('RESTFLOW_TMAP_MAP_KEY') or '', 'routing':bool(environment_secret('RESTFLOW_TMAP_ROUTE_KEY'))})
+                if p=='/api/version':return self.send(200,{'build':APP_BUILD,'files':{name:hashlib.sha256((ROOT/'web'/name).read_bytes()).hexdigest()[:12] for name in ('app.js','outdoor.js','outdoor.css')}})
+                if p=='/api/map-config': return self.send(200,{'map_key':environment_secret('RESTFLOW_TMAP_MAP_KEY') or '', 'routing':bool(environment_secret('RESTFLOW_TMAP_ROUTE_KEY')), 'map_mode':store.map_mode()})
                 if p=='/api/status': return self.send(200,store.snapshot())
                 if p=='/api/health':
                     with store.connect() as db: db.execute('SELECT 1').fetchone()
@@ -560,9 +578,12 @@ class App(BaseHTTPRequestHandler):
                     types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.woff2':'font/woff2'}
                     body=f.read_bytes()
                     if f.name=='index.html':
-                        key=environment_secret('RESTFLOW_TMAP_MAP_KEY') or ''
+                        mode=store.map_mode()
+                        key=(environment_secret('RESTFLOW_TMAP_MAP_KEY') or '') if mode=='outdoor' else ''
+                        body=body.replace(b'<body>',('<body class="mode-'+mode+'">').encode())
                         sdk=('<script src="https://apis.openapi.sk.com/tmap/jsv2?version=1&amp;appKey='+quote(key,safe='')+'"></script>') if key else ''
                         body=body.replace(b'<!--TMAP_SDK-->',sdk.encode('utf-8'))
+                        body=body.replace(b'?v=responsive9',('?v='+APP_BUILD).encode()).replace(b'/outdoor.js"',('/outdoor.js?v='+APP_BUILD+'"').encode()).replace(b'/outdoor.css"',('/outdoor.css?v='+APP_BUILD+'"').encode())
                     return self.send(200,body,types[f.suffix])
                 raise Problem(404,'경로를 찾을 수 없습니다')
             data={} if method=='DELETE' else self.body()
@@ -573,6 +594,7 @@ class App(BaseHTTPRequestHandler):
                 return self.send(200,store.ingest(data,self.token(),p.endswith('heartbeat')))
             if method=='POST' and p=='/api/route':return self.send(200,pedestrian_route(store,data))
             self.admin()
+            if method=='PUT' and p=='/api/map-mode':return self.send(200,store.set_map_mode(data.get('map_mode')))
             if method=='POST' and p=='/api/qr':
                 url=automatic_qr_url(self.server.public_url or data.get('url'))
                 return self.send(200,{'url':url,'svg':qr_svg(url).decode('utf-8')})

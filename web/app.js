@@ -36,7 +36,7 @@ window.restflowIcon = name => '<svg class="ui-icon" viewBox="0 0 24 24" fill="no
   if(admin){
    const values=[`${data.toilets.length}곳`,`${data.toilets.filter(t=>t.online).length} / ${data.toilets.length}`,`${data.toilets.filter(t=>t.level==='busy').length}곳`,`${data.toilets.filter(t=>!t.online||t.level==='unknown'||t.quality!=='good').length}곳`];
    byId('dashboard-updated').textContent=new Date(data.updated_at*1000).toLocaleTimeString('ko-KR',{timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false})+' 업데이트';
-   byId('demo-chip').hidden=!data.demo;byId('demo-chip').title=byId('banner').textContent;document.querySelector('.event-name').firstChild.textContent=data.demo?'작은 흐름 페스티벌':'행사장';
+   byId('demo-chip').hidden=!data.demo;byId('demo-chip').title=byId('banner').textContent;byId('map-mode').value=data.settings.map_mode||'outdoor';
    document.querySelector('.chart-note').hidden=!data.demo;
    document.querySelectorAll('.metric strong').forEach((node,index)=>node.textContent=values[index]);
    const selection=byId('device-toilet');selection.replaceChildren(...data.toilets.map(t=>{const o=document.createElement('option');o.value=t.id;o.textContent=t.name;return o;}));selection.value=byId('selected-toilet').value;
@@ -59,7 +59,7 @@ window.restflowIcon = name => '<svg class="ui-icon" viewBox="0 0 24 24" fill="no
   const button=make('button','side-link',`<span aria-hidden="true">${icons(key)}</span>${title}`);button.type='button';button.dataset.view=key;(key==='settings'?sidebar.querySelector('.sidebar-bottom'):nav).append(button);button.addEventListener('click',()=>window.openAdminView(key));
  }
  byId('logout').innerHTML=icons('logout')+'로그아웃';sidebar.querySelector('.sidebar-bottom').append(byId('logout'));
- const header=document.querySelector('header');const event=make('div','event-context',`<div class="event-name">작은 흐름 페스티벌${icons('down')}</div><span id="demo-chip" class="demo-chip" hidden><b></b>시연 모드</span>`);header.prepend(event);byId('visitor-link').innerHTML=icons('external')+'방문객 화면';
+ const header=document.querySelector('header');const event=make('div','event-context',`<label class="mode-control" for="map-mode">모드 선택<select id="map-mode" aria-label="모드 선택"><option value="outdoor">야외 페스티벌</option><option value="indoor">실내 페스티벌</option></select></label><span id="demo-chip" class="demo-chip" hidden><b></b>시연 모드</span>`);header.prepend(event);byId('visitor-link').innerHTML=icons('external')+'방문객 화면';
  const metrics=make('div','metrics');['등록 화장실','센서 연결','혼잡 시설','확인 필요'].forEach((title,i)=>metrics.append(make('div','metric',`<i aria-hidden="true">${icons(['facilities','wifi','users','alert'][i])}</i><div><span>${title}</span><strong>—</strong></div>`)));views.overview.append(metrics);
  const layout=document.querySelector('.layout');
  const workspaceHeading=document.querySelector('#workspace > .section-heading');workspaceHeading.remove();
@@ -129,7 +129,7 @@ const adminPage = location.pathname === '/admin';
 const labels = {quiet:'여유',moderate:'보통',busy:'혼잡',unknown:adminPage?'확인 필요':'안내 준비'};
 window.trafficPercent=t=>{if(!t||t.level==='unknown'||!t.online||t.quality!=='good')return null;if(Number.isFinite(t.congestion_percent))return Math.max(0,Math.min(100,Math.round(t.congestion_percent)));const s=t.score;if(!Number.isFinite(s))return null;return Math.min(100,Math.floor((s<.8?Math.max(0,s)*50:s<2?40+(s-.8)*35/1.2:75+(s-2)*12.5)+.5));};
 let authenticated = false, snapshot = null, selected = 1, dirty = false, refreshing = false;
-let positionDraft = null, drag = null, suppressMapClickUntil = 0;
+let positionDraft = null, drag = null, suppressMapClickUntil = 0, renderedMode = null;
 const elem = (tag, text, cls) => { const e=document.createElement(tag); if(text!==undefined)e.textContent=text; if(cls)e.className=cls; return e; };
 const localTime = at => at ? new Date(at*1000).toLocaleTimeString('ko-KR',{timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '수신 기록 없음';
 let noticeTimer;
@@ -197,6 +197,14 @@ function finishDrag(event,cancelled=false) {
 }
 function render() {
   if(!snapshot||drag)return;
+  const mode=snapshot.settings.map_mode||'outdoor';
+  if(renderedMode!==null&&renderedMode!==mode){
+    if(window.hasUnsavedDesignChanges?.()){notice('다른 관리자에서 모드가 변경됐습니다. 편집 내용을 저장하거나 취소한 뒤 새로고침하세요.',true);return;}
+    else{location.reload();return;}
+  }
+  renderedMode=mode;document.body.classList.toggle('mode-indoor',mode==='indoor');document.body.classList.toggle('mode-outdoor',mode==='outdoor');
+  const formHint=$('toilet-form').querySelector('.hint');
+  formHint.textContent=mode==='indoor'?'배치도 마커를 드래그한 뒤 변경사항 저장을 누르세요.':'화장실 이름과 칸 수는 여기서 저장합니다. 입구 위치는 지도 아래에서 별도로 저장하세요.';
   if(!snapshot.toilets.some(t=>t.id===selected)){selected=snapshot.toilets[0]?.id??null;dirty=false;positionDraft=null;}
   $('banner').hidden=!snapshot.demo;
   $('banner').textContent='시연 모드 · 모든 통행량과 장치 상태는 시뮬레이션 데이터입니다. 실제 현장 측정값이 아닙니다.';
@@ -327,9 +335,9 @@ $('password-form').addEventListener('submit',e=>{e.preventDefault();action(async
   $('password-form').reset();notice('비밀번호를 변경했습니다. 다음 로그인부터 새 비밀번호를 사용하세요.');
 });});
 $('new-toilet-form').addEventListener('submit',e=>{e.preventDefault();action(async()=>{
-  if(dirty&&!confirm('저장하지 않은 설정을 버리고 새 화장실을 추가할까요?'))return;
+  if(window.hasUnsavedDesignChanges?.()&&!confirm('저장하지 않은 설정을 버리고 새 화장실을 추가할까요?'))return;
   const result=await api('/api/toilets','POST',{name:$('new-toilet-name').value,stalls:Number($('new-toilet-stalls').value)});
-  selected=result.id;dirty=false;positionDraft=null;$('new-toilet-form').reset();await refresh();notice('화장실을 추가했습니다. 실제 지도에서 입구 위치를 지정해 저장하세요.');
+  selected=result.id;dirty=false;positionDraft=null;$('new-toilet-form').reset();await refresh();notice(snapshot.settings.map_mode==='indoor'?'화장실을 추가했습니다. 배치도에서 마커를 드래그한 뒤 저장하세요.':'화장실을 추가했습니다. 실제 지도에서 입구 위치를 지정해 저장하세요.');
 });});
 $('delete-toilet').addEventListener('click',()=>action(async()=>{
   const t=current();if(!t)return;
@@ -407,3 +415,23 @@ window.addEventListener('beforeunload',e=>{if(dirty||window.outdoor?.hasDraft())
 window.rerenderRestflow=render;
 
 window.chooseOutdoorFacility=id=>select(id,true);
+
+$('map-mode')?.addEventListener('change',async event=>{
+  const selector=event.target,previous=snapshot?.settings.map_mode||'outdoor',next=selector.value;
+  if(next===previous)return;
+  if(window.hasUnsavedDesignChanges?.()&&!confirm('저장하지 않은 변경사항을 버리고 모드를 바꿀까요?')){selector.value=previous;return;}
+  if(!confirm(`${next==='indoor'?'실내':'야외'} 페스티벌 모드로 바꿀까요? 방문객 화면에도 적용됩니다. 기존 배치도와 위치는 보존됩니다.`)){selector.value=previous;return;}
+  selector.disabled=true;
+  try{
+    await api('/api/map-mode','PUT',{map_mode:next});
+    dirty=false;positionDraft=null;window.outdoor?.discard();
+    location.reload();
+  }catch(error){selector.value=previous;selector.disabled=false;notice(error.message,true);}
+});
+
+const buildLabel=elem('small','화면 버전: modes-v1','app-build');document.querySelector('.map-panel').append(buildLabel);
+fetch('/api/version').then(async response=>{
+  const version=await response.json();
+  if(!response.ok||version.build!=='2026-11-13-modes-v1')throw new Error('서버 파일도 함께 업데이트해야 합니다. 실행 창을 종료하고 같은 폴더의 server.py와 web 폴더를 교체한 뒤 다시 실행하세요.');
+  buildLabel.textContent='화면·서버 버전: modes-v1';
+}).catch(error=>{buildLabel.textContent='실행 버전 확인 필요';notice(error.message,true);});

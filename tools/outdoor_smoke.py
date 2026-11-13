@@ -24,7 +24,7 @@ class TestMap extends Events {
  getCenter(){return this.center;}setCenter(p){this.center=p;}setZoom(){}resize(){}fitBounds(){}
 }
 class Marker extends Events {
- constructor(options){super();this.options=options;this.point=options.position;this.node=document.createElement('div');this.node.innerHTML=options.iconHTML;this.node.style.cssText='position:absolute;left:'+(100+testMarkers.length*90)+'px;top:130px';options.map.container.append(this.node);testMarkers.push(this);}
+ constructor(options){super();this.options=options;this.point=options.position;this.node=document.createElement('div');this.node.innerHTML=options.iconHTML;this.node.style.cssText='position:absolute;left:'+(100+(Number(this.node.querySelector('[data-facility-id]')?.dataset.facilityId||1)-1)*90)+'px;top:130px';options.map.container.append(this.node);testMarkers.push(this);}
  getPosition(){return this.point;}setMap(map){if(!map){this.node.remove();this.removed=true;}}
 }
 class Overlay {constructor(){}setMap(){}extend(){}}
@@ -34,7 +34,7 @@ window.Tmapv2={Map:TestMap,Marker,LatLng:Point,Size:class{},Circle:Overlay,Polyl
 def run():
     toilets=[dict(id=i,name=f'화장실 {chr(64+i)}',stalls=4,x=50,y=50,latitude=37.57+i*.001 if i<3 else None,longitude=126.98 if i<3 else None,level=['quiet','moderate','busy'][i-1],online=True,quality='good',score=.2,congestion_percent=10,last_seen=time.time(),device_id=f'demo-{i}') for i in range(1,4)]
     state=dict(demo=True,settings={},updated_at=time.time(),toilets=toilets)
-    store=Mock();store.snapshot.side_effect=lambda:copy.deepcopy(state)
+    store=Mock();store.map_mode.return_value='outdoor';store.snapshot.side_effect=lambda:copy.deepcopy(state)
     server=make_server('127.0.0.1',0,store)
     thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
     saved=[]

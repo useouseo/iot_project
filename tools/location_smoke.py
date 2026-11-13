@@ -22,7 +22,7 @@ Object.defineProperty(navigator,'geolocation',{value:{
 '''
 
 def run():
-    store=Mock();store.snapshot.return_value=dict(settings={},demo=True,updated_at=time.time(),toilets=[dict(id=1,name='화장실 A',stalls=4,x=50,y=50,latitude=37.58,longitude=126.99,level='quiet',online=True,quality='good',score=.2,congestion_percent=10,last_seen=time.time(),device_id='demo-1')])
+    store=Mock();store.map_mode.return_value='outdoor';store.snapshot.return_value=dict(settings={},demo=True,updated_at=time.time(),toilets=[dict(id=1,name='화장실 A',stalls=4,x=50,y=50,latitude=37.58,longitude=126.99,level='quiet',online=True,quality='good',score=.2,congestion_percent=10,last_seen=time.time(),device_id='demo-1')])
     server=make_server('127.0.0.1',0,store);thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
     try:
         with sync_playwright() as p:
@@ -49,7 +49,7 @@ def run():
             page.wait_for_function('document.getElementById("outdoor-message").textContent.includes("120m")')
             assert page.evaluate('testGeo.calls')==3
             assert routes[-1]['latitude']==37.572
-            page.locator('#geo-clear').click()
+            page.locator('#geo-route').click()
             # A large error can be declined or explicitly accepted.
             page.evaluate('testGeo.accuracy=500;testGeo.timestamp=Date.now();testWatchSuccess(emitLocation())')
             page.once('dialog',lambda d:d.dismiss());page.locator('#geo-route').click()
@@ -58,7 +58,7 @@ def run():
             page.once('dialog',lambda d:d.accept());page.locator('#geo-route').click()
             page.wait_for_function('document.getElementById("outdoor-message").textContent.includes("120m")')
             assert len(routes)==2
-            page.locator('#geo-clear').click()
+            page.locator('#geo-route').click()
             # A timeout retains the last fix and permits using it with explicit confirmation.
             page.evaluate('testGeo.timestamp=Date.now()-120000;testWatchSuccess(emitLocation());testGeo.fail=3')
             page.locator('#geo-locate').click()

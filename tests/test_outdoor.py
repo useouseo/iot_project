@@ -8,7 +8,7 @@ from server import geo_coordinate, pedestrian_route, Problem
 
 class OutdoorTests(unittest.TestCase):
     def setUp(self):
-        self.store=Mock()
+        self.store=Mock();self.store.map_mode.return_value='outdoor'
         self.store.snapshot.return_value={'toilets':[dict(id=1,latitude=37.57,longitude=126.98)]}
         self.data=dict(latitude=37.56,longitude=126.97,toilet_id=1)
         self.env=patch.dict(os.environ,{'RESTFLOW_TMAP_ROUTE_KEY':'test-server-key'},clear=True)

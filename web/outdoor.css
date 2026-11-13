@@ -1,4 +1,5 @@
-#map-surface,#map-editor,.upload-label,.coordinate-details{display:none!important}
+.mode-outdoor #map-surface,.mode-outdoor #map-editor,.mode-outdoor .upload-label,.mode-outdoor .coordinate-details{display:none!important}
+.mode-indoor .outdoor-section{display:none!important}
 #outdoor-map{width:100%;height:520px!important;min-height:360px;background:#edf3f1;isolation:isolate;overflow:hidden}
 .outdoor-tools{padding:16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
 #outdoor-message{padding:0 16px 14px;margin:0;color:#35594e}
@@ -26,3 +27,13 @@
 #outdoor-map .geo-pin.unknown small{font-size:8px;letter-spacing:-.4px}
 
 .geo-coordinate-fields{margin:10px 0 14px;font-size:12px}.geo-coordinate-fields summary{cursor:pointer;color:#486b5a}#geo-save,#geo-undo{margin:4px 8px 0 0}
+
+.mode-control{display:flex;align-items:center;gap:10px;margin:0;font-size:13px;font-weight:700;color:var(--ink);white-space:nowrap}
+.mode-control select{margin:0;width:auto;min-width:145px;font-weight:650;background:#fff}
+.mode-indoor .signed-in .upload-label{display:block}
+.outdoor-tools{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.outdoor-tools button{min-width:0;white-space:nowrap;min-height:44px;padding:10px 8px}
+.mode-indoor #map-editor[hidden],.mode-indoor .upload-label[hidden]{display:none!important}
+@media(max-width:600px){.mode-control{gap:7px;font-size:12px}.mode-control select{min-width:0;max-width:155px;font-size:12px}.event-context{gap:8px}.outdoor-tools{padding:12px;gap:8px}}
+
+.app-build{display:block!important;text-align:right;padding:4px 12px;font-size:10px!important;white-space:nowrap;color:#69776f}
