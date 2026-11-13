@@ -21,7 +21,7 @@ import threading
 import mariadb
 
 ROOT = Path(__file__).resolve().parent
-APP_BUILD = '2026-11-13-festivals-v2'
+APP_BUILD = '2026-11-13-festivals-v3'
 
 def congestion_percent(score, healthy=True):
     """Relative traffic index, not stall occupancy. 0/.8/2/4 -> 0/40/75/100."""
@@ -536,6 +536,21 @@ class Store:
                 raise Problem(404,'화장실을 찾을 수 없습니다')
         return {'saved':True}
 
+    def update_info(self,tid,data,festival_id=1):
+        name=text_value(data.get('name'),40,'화장실 이름')
+        stalls=integer(data.get('stalls'),1,100,'운영 칸 수')
+        self.require_toilet(tid,festival_id)
+        with self.connect() as db:
+            db.execute('UPDATE toilets SET name=?,stalls=? WHERE id=? AND festival_id=? AND active=1',(name,stalls,tid,festival_id))
+        return {'saved':True}
+
+    def update_layout_position(self,tid,data,festival_id=1):
+        x=integer(data.get('x'),3,97,'지도 X');y=integer(data.get('y'),3,97,'지도 Y')
+        self.require_toilet(tid,festival_id)
+        with self.connect() as db:
+            db.execute('UPDATE toilets SET x=?,y=? WHERE id=? AND festival_id=? AND active=1',(x,y,tid,festival_id))
+        return {'saved':True}
+
     def require_toilet(self,tid,festival_id=1):
         with self.connect() as db:
             if not db.execute('SELECT 1 FROM toilets WHERE id=? AND festival_id=? AND active=1',(tid,festival_id)).fetchone():
@@ -558,7 +573,7 @@ class Store:
 
 
 class FestivalScope:
-    SCOPED={'snapshot','all_devices','map_mode','set_map_mode','create','delete','register','history','update','simulate','require_toilet'}
+    SCOPED={'snapshot','all_devices','map_mode','set_map_mode','create','delete','register','history','update','simulate','require_toilet','update_info','update_layout_position'}
     def __init__(self,store,festival_id):
         self.root,self.festival_id=store,festival_id
         self.festival_info=store.festival(festival_id)
@@ -727,7 +742,12 @@ class App(BaseHTTPRequestHandler):
                         raise Problem(404,'화장실을 찾을 수 없습니다')
                     db.execute('UPDATE toilets SET latitude=?,longitude=? WHERE id=? AND festival_id=?',(lat,lng,tid,fid))
                 return self.send(200,{'saved':True})
+            if method=='PUT' and re.fullmatch(r'/api/(layout-position|toilet-info)/[0-9]+',p):
+                tid=int(p.rsplit('/',1)[1])
+                method_fn=store.update_layout_position if p.startswith('/api/layout-position/') else store.update_info
+                return self.send(200,method_fn(tid,data))
             if method=='PUT' and p.startswith('/api/toilets/'):
+
 
                 try: tid=int(p.rsplit('/',1)[1])
                 except ValueError: raise Problem(400,'잘못된 화장실 ID')

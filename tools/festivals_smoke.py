@@ -58,9 +58,30 @@ def run():
             admin.wait_for_function('document.getElementById("event-map").src.startsWith("data:image/png")')
             marker=admin.locator('#markers .marker');r=marker.bounding_box();surface=admin.locator('#map-surface').bounding_box()
             admin.mouse.move(r['x']+r['width']/2,r['y']+r['height']/2);admin.mouse.down();admin.mouse.move(surface['x']+surface['width']*.7,surface['y']+surface['height']*.6,steps=6);admin.mouse.up()
-            with admin.expect_response(lambda r:'/api/toilets/' in r.url and r.request.method=='PUT') as saved:
-                admin.locator('#save-settings').click()
+            assert admin.locator('#save-position').is_visible()
+            admin.locator('#toilet-name').fill('실내 새 이름')
+            with admin.expect_response(lambda r:'/api/layout-position/' in r.url and r.request.method=='PUT') as saved:
+                admin.locator('#save-position').click()
             assert saved.value.status==200,saved.value.text()
+            admin.wait_for_function('document.getElementById("save-position").disabled')
+            row=store.snapshot(festival_id=indoor_id)['toilets'][0]
+            saved_xy=(row['x'],row['y'])
+            assert row['name']=='실내 전용 화장실'
+            assert admin.locator('#toilet-name').input_value()=='실내 새 이름'
+            # Change the position again, then save only the metadata on the right.
+            marker=admin.locator('#markers .marker');r=marker.bounding_box();surface=admin.locator('#map-surface').bounding_box()
+            admin.mouse.move(r['x']+r['width']/2,r['y']+r['height']/2);admin.mouse.down();admin.mouse.move(surface['x']+surface['width']*.4,surface['y']+surface['height']*.4,steps=6);admin.mouse.up()
+            draft_x=admin.locator('#map-x').input_value()
+            admin.evaluate('window.rerenderRestflow()')
+            assert admin.locator('#map-x').input_value()==draft_x
+            with admin.expect_response(lambda r:'/api/toilet-info/' in r.url and r.request.method=='PUT') as named:
+                admin.locator('#save-settings').click()
+            assert named.value.status==200,named.value.text()
+            admin.wait_for_function('!formChanged()')
+            row=store.snapshot(festival_id=indoor_id)['toilets'][0]
+            assert row['name']=='실내 새 이름' and (row['x'],row['y'])==saved_xy
+            assert not admin.locator('#save-position').is_disabled()
+            admin.locator('#undo-position').click()
             admin.wait_for_function('!window.hasUnsavedDesignChanges()')
             admin.evaluate("window.openAdminView('devices')")
             tid=store.snapshot(festival_id=indoor_id)['toilets'][0]['id']
@@ -76,7 +97,7 @@ def run():
             visitor=context.new_page();visitor.on('pageerror',lambda e:errors.append(str(e)));visitor.goto(base+'/f/'+indoor['public_id'])
             visitor.locator('#markers .marker').wait_for()
             assert visitor.locator('#subtitle').inner_text()=='별빛 실내 축제'
-            assert visitor.locator('#cards').inner_text().find('실내 전용 화장실')>=0
+            assert visitor.locator('#cards').inner_text().find('실내 새 이름')>=0
             assert visitor.evaluate('testGeo.calls')==0
             assert not visitor.evaluate('Boolean(window.Tmapv2)')
             assert visitor.locator('a.brand').first.get_attribute('href')=='/f/'+indoor['public_id']
@@ -105,7 +126,7 @@ def run():
             assert outdoor_visitor.locator('.outdoor-tools button').count()==2
             assert visitor.locator('#subtitle').inner_text()=='별빛 실내 축제'
             visitor.reload();visitor.locator('#markers .marker').wait_for()
-            assert visitor.locator('#cards').inner_text().find('실내 전용 화장실')>=0
+            assert visitor.locator('#cards').inner_text().find('실내 새 이름')>=0
             reloaded=Store(config)
             assert len(reloaded.list_festivals())==3
             assert reloaded.snapshot(festival_id=indoor_id)['settings']['map'].startswith('data:image/png')
@@ -127,7 +148,7 @@ def run():
             assert len(Store(config).list_festivals())==1
             assert not errors,errors
             assert outdoor_visitor.evaluate('document.documentElement.scrollWidth<=innerWidth')
-            print('PASS: create indoor/outdoor festivals, isolated toilets/maps/sensors, indoor drag save, per-festival QR generation, pinned visitors, outdoor marker tap/route toggle, restart persistence, header delete confirmation/cancel, ended visitors, legacy deletion, last-festival protection')
+            print('PASS: create indoor/outdoor festivals, isolated toilets/maps/sensors, indoor bottom position bar and independent metadata save/undo, per-festival QR generation, pinned visitors, outdoor marker tap/route toggle, restart persistence, header delete confirmation/cancel, ended visitors, legacy deletion, last-festival protection')
             browser.close()
     finally:
         server.shutdown();server.server_close();thread.join()

@@ -67,7 +67,7 @@ window.restflowIcon = name => '<svg class="ui-icon" viewBox="0 0 24 24" fill="no
   const button=make('button','side-link',`<span aria-hidden="true">${icons(key)}</span>${title}`);button.type='button';button.dataset.view=key;(key==='settings'?sidebar.querySelector('.sidebar-bottom'):nav).append(button);button.addEventListener('click',()=>window.openAdminView(key));
  }
  byId('logout').innerHTML=icons('logout')+'로그아웃';sidebar.querySelector('.sidebar-bottom').append(byId('logout'));
- const header=document.querySelector('header');const event=make('div','event-context',`<label class="mode-control" for="festival-select">축제 선택<select id="festival-select" aria-label="축제 선택" disabled><option value="">불러오는 중</option></select></label><span id="festival-kind" class="festival-kind"></span><button type="button" id="add-festival" class="secondary" disabled>+ 축제 추가</button><button type="button" id="delete-festival" class="secondary danger" disabled>축제 삭제</button><span id="demo-chip" class="demo-chip" hidden><b></b>시연 모드</span>`);header.prepend(event);byId('visitor-link').innerHTML=icons('external')+'방문객 화면';
+ const header=document.querySelector('header');const event=make('div','event-context',`<label class="mode-control" for="festival-select">목록<select id="festival-select" aria-label="축제 목록" disabled><option value="">불러오는 중</option></select></label><span id="festival-kind" class="festival-kind"></span><button type="button" id="add-festival" class="secondary" disabled>추가</button><button type="button" id="delete-festival" class="secondary danger" disabled>삭제</button><span id="demo-chip" class="demo-chip" hidden><b></b>시연 모드</span>`);header.prepend(event);byId('visitor-link').innerHTML=icons('external')+'방문객 화면';
  const festivalDialog=make('dialog','festival-dialog','<form id="festival-form"><h2>새 축제 추가</h2><label>축제 이름<input id="festival-name" maxlength="80" required placeholder="예: 별빛 실내 축제"></label><fieldset class="festival-types"><legend>운영 유형</legend><label><input type="radio" name="festival-mode" value="outdoor" required checked><strong>야외</strong><small>실제 지도 · 도보 길찾기</small></label><label><input type="radio" name="festival-mode" value="indoor" required><strong>실내</strong><small>배치도 업로드 · 혼잡도</small></label></fieldset><p>지도·화장실·센서·QR은 축제별로 따로 관리됩니다.</p><div class="festival-dialog-actions"><button id="cancel-festival" type="button" class="secondary">취소</button><button id="create-festival" class="primary" type="submit">축제 만들기</button></div><p id="festival-form-error" role="alert" hidden></p></form>');festivalDialog.id='festival-dialog';document.body.append(festivalDialog);
 
  const metrics=make('div','metrics');['등록 화장실','센서 연결','혼잡 시설','확인 필요'].forEach((title,i)=>metrics.append(make('div','metric',`<i aria-hidden="true">${icons(['facilities','wifi','users','alert'][i])}</i><div><span>${title}</span><strong>—</strong></div>`)));views.overview.append(metrics);
@@ -91,7 +91,7 @@ window.restflowIcon = name => '<svg class="ui-icon" viewBox="0 0 24 24" fill="no
  const upload=document.querySelector('.upload-label');mapPanel.insertBefore(upload,byId('map-editor'));upload.firstChild.textContent='행사장 배치도 변경 ';
  editPanel.querySelector('h3').textContent='화장실 정보 및 위치';
  byId('toilet-form').querySelector('button').textContent='변경사항 저장';
- byId('save-position').textContent='변경사항 저장';byId('save-position').hidden=true;byId('undo-position').textContent='위치 되돌리기';
+ byId('save-position').textContent='위치 저장';byId('save-position').hidden=false;byId('undo-position').textContent='위치 되돌리기';byId('map-editor').append(document.querySelector('.coordinate-details'));
  const cancel=make('button','secondary','수정 취소');cancel.type='button';cancel.id='cancel-edit';byId('toilet-form').append(cancel);
  const form=byId('toilet-form'), fields=byId('toilet-fields'), save=form.querySelector('.primary');save.id='save-settings';
  const actions=make('div','facility-actions'),rightActions=make('div','facility-actions-right');byId('delete-toilet').textContent='삭제';byId('delete-toilet').type='button';actions.append(byId('delete-toilet'),rightActions);rightActions.append(cancel,save);form.append(actions);
@@ -116,12 +116,12 @@ window.restflowIcon = name => '<svg class="ui-icon" viewBox="0 0 24 24" fill="no
  let currentView='overview';
  window.openAdminView=key=>{
   if(!views[key])key='overview';
-  if(currentView!==key&&window.hasUnsavedDesignChanges?.()&&!confirm('저장하지 않은 변경사항이 있습니다. 화면을 이동할까요?'))return;
+  if(currentView!==key&&window.hasUnsavedDesignChanges?.()){if(!confirm('저장하지 않은 변경사항이 있습니다. 화면을 이동할까요?'))return;window.discardRestflowEdits?.();}
   currentView=key;
   Object.entries(views).forEach(([name,view])=>view.hidden=name!==key);
   sidebar.querySelectorAll('.side-link').forEach(b=>{b.classList.toggle('active',b.dataset.view===key);if(b.dataset.view===key)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
   introTitle.textContent=titles[key];caption.textContent={overview:'시설과 센서 상태를 한눈에 확인하세요.',facilities:'화장실 정보와 지도 위치를 함께 수정하세요.',devices:'장치를 등록하고 시설별 연결 상태를 확인하세요.',qr:'자동 연결 주소로 방문객 안내 QR을 생성하세요.',settings:'관리자 계정의 비밀번호를 변경하세요.'}[key];
-  if(key==='facilities'){mapSlot.append(mapPanel);mapPanel.append(byId('map-editor'));}
+  if(key==='facilities'){mapSlot.append(mapPanel);mapPanel.append(byId('map-editor'));const build=mapPanel.querySelector('.app-build');if(build)mapPanel.append(build);}
   else{layout.prepend(mapPanel);}
   const editing=key==='facilities';document.body.classList.toggle('editing-facilities',editing);byId('map-editor').hidden=!editing;byId('map-surface').classList.toggle('map-editable',editing);
   if(key==='devices')byId('device-list-slot').append(byId('device-status'));else deviceStatusPanel.append(byId('device-status'));
@@ -140,7 +140,7 @@ if(!adminPage&&document.body.dataset.festivalPublicId){for(const link of documen
 const labels = {quiet:'여유',moderate:'보통',busy:'혼잡',unknown:adminPage?'확인 필요':'안내 준비'};
 window.trafficPercent=t=>{if(!t||t.level==='unknown'||!t.online||t.quality!=='good')return null;if(Number.isFinite(t.congestion_percent))return Math.max(0,Math.min(100,Math.round(t.congestion_percent)));const s=t.score;if(!Number.isFinite(s))return null;return Math.min(100,Math.floor((s<.8?Math.max(0,s)*50:s<2?40+(s-.8)*35/1.2:75+(s-2)*12.5)+.5));};
 let authenticated = false, snapshot = null, selected = 1, dirty = false, refreshing = false;
-let positionDraft = null, drag = null, suppressMapClickUntil = 0, renderedMode = null;
+let positionDraft = null, drag = null, suppressMapClickUntil = 0, renderedMode = null, savingLayout = false;
 const elem = (tag, text, cls) => { const e=document.createElement(tag); if(text!==undefined)e.textContent=text; if(cls)e.className=cls; return e; };
 const localTime = at => at ? new Date(at*1000).toLocaleTimeString('ko-KR',{timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '수신 기록 없음';
 let noticeTimer;
@@ -155,7 +155,7 @@ function markerLabel(index) { return index<26 ? String.fromCharCode(65+index) : 
 
 function current() { return snapshot?.toilets.find(t=>t.id===selected); }
 function select(id, scroll=false) {
-  if((dirty||window.outdoor?.hasDraft()) && id!==selected && !confirm('저장하지 않은 설정을 버리고 다른 화장실을 선택할까요?')) {
+  if((dirty||positionChanged()||window.outdoor?.hasDraft()) && id!==selected && !confirm('저장하지 않은 설정을 버리고 다른 화장실을 선택할까요?')) {
     $('selected-toilet').value=selected; return false;
   }
   if(id!==selected) { selected=id;dirty=false;positionDraft=null; }
@@ -166,17 +166,18 @@ function select(id, scroll=false) {
 }
 function mapPosition(t) { return positionDraft?.id===t.id ? positionDraft : t; }
 function formChanged() {
-  const t=current();return t && ($('toilet-name').value!==t.name || Number($('stalls').value)!==t.stalls || Number($('map-x').value)!==t.x || Number($('map-y').value)!==t.y);
+  const t=current();return t && ($('toilet-name').value!==t.name || Number($('stalls').value)!==t.stalls);
 }
+function positionChanged(){const t=current();return Boolean(t&&positionDraft?.id===t.id&&(positionDraft.x!==t.x||positionDraft.y!==t.y));}
 function updatePlacement() {
   const t=current();if(!t){$('placement-title').textContent='화장실을 추가해 주세요';$('placement-state').textContent='추가한 화장실은 드래그해서 위치를 정할 수 있습니다.';$('save-position').disabled=true;$('undo-position').disabled=true;return;}
-  const changed=positionDraft?.id===t.id && (positionDraft.x!==t.x || positionDraft.y!==t.y);
+  const changed=positionChanged();
   $('placement-title').textContent=`${t.name} · 위치 설정`;
-  $('placement-state').textContent=changed?'위치 변경됨 · 오른쪽 변경사항 저장을 누르면 방문객 지도에도 반영됩니다.':'마커를 드래그하거나 지도를 클릭하세요. 마커에서 방향키로도 이동할 수 있습니다.';
-  $('save-position').disabled=!changed; $('undo-position').disabled=!changed;
+  $('placement-state').textContent=changed?'위치 변경됨 · 아래 위치 저장을 누르면 방문객 지도에도 반영됩니다.':'마커를 드래그하거나 지도를 클릭하세요. 마커에서 방향키로도 이동할 수 있습니다.';
+  $('save-position').disabled=savingLayout||!changed; $('undo-position').disabled=savingLayout||!changed;
 }
 function setPosition(x,y) {
-  const t=current();if(!t)return;
+  const t=current();if(!t||savingLayout)return;
   x=Math.min(97,Math.max(3,Math.round(x)));y=Math.min(97,Math.max(3,Math.round(y)));
   positionDraft={id:selected,x,y};$('map-x').value=x;$('map-y').value=y;dirty=Boolean(formChanged());
   const mark=$('markers').querySelector(`[data-id="${selected}"]`);
@@ -184,7 +185,7 @@ function setPosition(x,y) {
   updatePlacement();
 }
 function beginDrag(event,id) {
-  if(!adminPage||!authenticated||!window.designEditing||!event.isPrimary||event.button!==0)return;
+  if(savingLayout||!adminPage||!authenticated||!window.designEditing||!event.isPrimary||event.button!==0)return;
   event.preventDefault();event.stopPropagation();
   if(!select(id)){suppressMapClickUntil=performance.now()+400;return;}
   const surface=$('map-surface'),rect=surface.getBoundingClientRect(),pos=mapPosition(current());
@@ -203,7 +204,7 @@ function finishDrag(event,cancelled=false) {
   }}
   $('markers').querySelector('.dragging')?.classList.remove('dragging');
   suppressMapClickUntil=performance.now()+400;
-  if(finished.moved&&!cancelled)notice('마커를 옮겼습니다. 변경사항 저장을 눌러주세요.');
+  if(finished.moved&&!cancelled)notice('마커를 옮겼습니다. 지도 아래 위치 저장을 눌러주세요.');
   updatePlacement();
 }
 function render() {
@@ -217,7 +218,7 @@ function render() {
   }
   renderedMode=mode;document.body.classList.toggle('mode-indoor',mode==='indoor');document.body.classList.toggle('mode-outdoor',mode==='outdoor');
   const formHint=$('toilet-form').querySelector('.hint');
-  formHint.textContent=mode==='indoor'?'배치도 마커를 드래그한 뒤 변경사항 저장을 누르세요.':'화장실 이름과 칸 수는 여기서 저장합니다. 입구 위치는 지도 아래에서 별도로 저장하세요.';
+  formHint.textContent=mode==='indoor'?'이름·칸 수는 여기서 저장하고, 마커 위치는 지도 아래 위치 저장을 누르세요.':'화장실 이름과 칸 수는 여기서 저장합니다. 입구 위치는 지도 아래에서 별도로 저장하세요.';
   if(!snapshot.toilets.some(t=>t.id===selected)){selected=snapshot.toilets[0]?.id??null;dirty=false;positionDraft=null;}
   $('banner').hidden=!snapshot.demo;
   $('banner').textContent='시연 모드 · 모든 통행량과 장치 상태는 시뮬레이션 데이터입니다. 실제 현장 측정값이 아닙니다.';
@@ -288,7 +289,7 @@ function render() {
   }
   window.selectedFacilityId=selected;window.syncDesign?.(snapshot);window.outdoor?.update(snapshot,selected,Boolean(adminPage&&authenticated&&window.designEditing));$('cards').scrollTop=cardScroll;
 }
-function fillForm(){const t=current();if(!t){$('toilet-name').value='';$('stalls').value=4;$('map-x').value=50;$('map-y').value=50;return;}$('selected-toilet').value=t.id;$('toilet-name').value=t.name;$('stalls').value=t.stalls;$('map-x').value=t.x;$('map-y').value=t.y;}
+function fillForm(){const t=current();if(!t){$('toilet-name').value='';$('stalls').value=4;$('map-x').value=50;$('map-y').value=50;return;}$('selected-toilet').value=t.id;$('toilet-name').value=t.name;$('stalls').value=t.stalls;const pos=mapPosition(t);$('map-x').value=pos.x;$('map-y').value=pos.y;}
 async function refresh(){
   if(refreshing||drag)return;refreshing=true;
   try {snapshot=await api('/api/status');render();if(adminPage&&authenticated)await loadHistory();}
@@ -365,10 +366,8 @@ $('delete-toilet').addEventListener('click',()=>action(async()=>{
 }));
 $('refresh').addEventListener('click',refresh);
 $('selected-toilet').addEventListener('change',()=>select(Number($('selected-toilet').value)));
-$('toilet-form').addEventListener('input',e=>{
-  dirty=Boolean(formChanged());
-  if(['map-x','map-y'].includes(e.target.id) && $('map-x').validity.valid && $('map-y').validity.valid)setPosition(Number($('map-x').value),Number($('map-y').value));
-});
+$('toilet-form').addEventListener('input',()=>{dirty=Boolean(formChanged());});
+$('map-editor').addEventListener('input',()=>{if($('map-x').value!==''&&$('map-y').value!==''&&$('map-x').validity.valid&&$('map-y').validity.valid)setPosition(Number($('map-x').value),Number($('map-y').value));});
 $('map-surface').addEventListener('pointermove',e=>{
   if(!drag||e.pointerId!==drag.pointer)return;
   if(!drag.moved&&Math.hypot(e.clientX-drag.startX,e.clientY-drag.startY)<4)return;
@@ -385,13 +384,23 @@ $('map-surface').addEventListener('click',e=>{
   const rect=$('map-surface').getBoundingClientRect();
   setPosition((e.clientX-rect.left)/rect.width*100,(e.clientY-rect.top)/rect.height*100);
 });
-$('save-position').addEventListener('click',()=>$('toilet-form').requestSubmit());
+$('save-position').addEventListener('click',()=>action(async()=>{
+  const t=current();if(!t||savingLayout||!positionChanged())return;
+  for(const field of [$('map-x'),$('map-y')])if(!field.reportValidity())return;
+  const tid=t.id,{x,y}=positionDraft;savingLayout=true;updatePlacement();
+  try{
+    await api(`/api/layout-position/${tid}`,'PUT',{x,y});
+    const row=snapshot.toilets.find(row=>row.id===tid);if(row){row.x=x;row.y=y;}
+    if(positionDraft?.id===tid)positionDraft=null;
+    notice('화장실 위치를 저장했습니다.');render();await refresh();
+  }finally{savingLayout=false;updatePlacement();}
+}));
 $('undo-position').addEventListener('click',()=>{
   const t=current();if(!t)return;positionDraft=null;$('map-x').value=t.x;$('map-y').value=t.y;dirty=Boolean(formChanged());render();
 });
 $('toilet-form').addEventListener('submit',e=>{e.preventDefault();action(async()=>{
-  await api(`/api/toilets/${selected}`,'PUT',{name:$('toilet-name').value,stalls:Number($('stalls').value),x:Number($('map-x').value),y:Number($('map-y').value)});
-  dirty=false;positionDraft=null;notice('화장실 설정과 지도 위치를 저장했습니다.');await refresh();
+  await api(`/api/toilet-info/${selected}`,'PUT',{name:$('toilet-name').value,stalls:Number($('stalls').value)});
+  dirty=false;notice('화장실 이름과 칸 수를 저장했습니다.');await refresh();
 });});
 $('device-form').addEventListener('submit',e=>{e.preventDefault();action(async()=>{
   const data=await api('/api/devices','POST',{id:$('device-id').value,toilet_id:selected});
@@ -427,15 +436,16 @@ $('qr-form').addEventListener('submit',e=>{e.preventDefault();action(async()=>{
 if(adminPage)showAdmin().catch(e=>{if(e.message.includes('이전 서버'))notice(e.message,true);});else refresh();
 setInterval(()=>{if(!adminPage||authenticated)refresh();},5000);
 
-window.hasUnsavedDesignChanges=()=>dirty||Boolean(window.outdoor?.hasDraft());
-$('cancel-edit')?.addEventListener('click',()=>{window.outdoor?.discard();dirty=false;positionDraft=null;fillForm();render();notice('수정을 취소했습니다.');});
-window.addEventListener('beforeunload',e=>{if(dirty||window.outdoor?.hasDraft()){e.preventDefault();e.returnValue='';}});
+window.hasUnsavedDesignChanges=()=>dirty||positionChanged()||Boolean(window.outdoor?.hasDraft());
+$('cancel-edit')?.addEventListener('click',()=>{dirty=false;fillForm();render();notice('이름과 칸 수 수정을 취소했습니다.');});
+window.addEventListener('beforeunload',e=>{if(dirty||positionChanged()||window.outdoor?.hasDraft()){e.preventDefault();e.returnValue='';}});
 
 window.rerenderRestflow=render;
 
 window.chooseOutdoorFacility=id=>select(id,true);
 
 function discardFestivalEdits(){dirty=false;positionDraft=null;window.outdoor?.discard();}
+window.discardRestflowEdits=discardFestivalEdits;
 $('festival-select')?.addEventListener('change',event=>{
   const next=Number(event.target.value);
   if(!next||next===activeFestivalId)return;
@@ -464,9 +474,9 @@ $('delete-festival')?.addEventListener('click',async()=>{
   }catch(error){$('delete-festival').disabled=false;notice(error.message,true);}
 });
 
-const buildLabel=elem('small','화면 버전: festivals-v2','app-build');document.querySelector('.map-panel').append(buildLabel);
+const buildLabel=elem('small','화면 버전: festivals-v3','app-build');document.querySelector('.map-panel').append(buildLabel);
 fetch('/api/version').then(async response=>{
   const version=await response.json();
-  if(!response.ok||version.build!=='2026-11-13-festivals-v2')throw new Error('서버 파일도 함께 업데이트해야 합니다. 실행 창을 종료하고 같은 폴더의 server.py와 web 폴더를 교체한 뒤 다시 실행하세요.');
-  buildLabel.textContent='화면·서버 버전: festivals-v2';
+  if(!response.ok||version.build!=='2026-11-13-festivals-v3')throw new Error('서버 파일도 함께 업데이트해야 합니다. 실행 창을 종료하고 같은 폴더의 server.py와 web 폴더를 교체한 뒤 다시 실행하세요.');
+  buildLabel.textContent='화면·서버 버전: festivals-v3';
 }).catch(error=>{buildLabel.textContent='실행 버전 확인 필요';notice(error.message,true);});

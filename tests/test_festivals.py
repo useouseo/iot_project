@@ -181,3 +181,15 @@ class FestivalTests(unittest.TestCase):
             statuses=list(pool.map(remove,candidates))
         self.assertEqual(sorted(statuses),[200,409])
         self.assertEqual(len(self.store.list_festivals()),1)
+    def test_layout_position_and_metadata_save_independently(self):
+        fid=self.indoor['id'];tid=self.in_toilet
+        self.assertEqual(self.request(f'/api/layout-position/{tid}','PUT',{'x':65,'y':73},fid)[0],200)
+        row=self.store.snapshot(festival_id=fid)['toilets'][0]
+        self.assertEqual((row['x'],row['y'],row['name'],row['stalls']),(65,73,'실내 A',3))
+        self.assertEqual(self.request(f'/api/toilet-info/{tid}','PUT',{'name':'실내 새 이름','stalls':5},fid)[0],200)
+        row=self.store.snapshot(festival_id=fid)['toilets'][0]
+        self.assertEqual((row['x'],row['y'],row['name'],row['stalls']),(65,73,'실내 새 이름',5))
+        self.assertEqual(self.request(f'/api/layout-position/{tid}','PUT',{'x':20,'y':30},self.outdoor['id'])[0],404)
+        self.assertEqual(self.request(f'/api/toilet-info/{tid}','PUT',{'name':'bad','stalls':2},self.outdoor['id'])[0],404)
+        self.assertEqual(self.request(f'/api/layout-position/{tid}','PUT',{'x':True,'y':30},fid)[0],400)
+        self.assertEqual(self.request(f'/api/toilet-info/{tid}','PUT',{'name':'bad','stalls':0},fid)[0],400)

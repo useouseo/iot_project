@@ -93,3 +93,12 @@
 
 /* Visitor maps end after location/route guidance; details are already in the facility list. */
 .visitor-page #outdoor-detail,.visitor-page .map-footer,.visitor-page .app-build{display:none!important}
+
+/* Indoor placement uses the same save/undo bar as the outdoor entrance editor. */
+.mode-indoor.editing-facilities #map-editor{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 12px;align-items:center;padding:14px 16px;background:#f2f7f4}
+.mode-indoor #map-editor #save-position{display:inline-flex!important;align-items:center;justify-content:center}
+.mode-indoor #map-editor .position-actions{display:flex;gap:8px;align-items:center}
+.mode-indoor #map-editor .coordinate-details{grid-column:1/-1;margin:0;font-size:12px}
+.mode-indoor #map-editor .coordinate-details summary{cursor:pointer;color:#486b5a}
+.mode-indoor #map-editor .coordinate-details .form-row{max-width:360px}
+@media(max-width:600px){.mode-indoor.editing-facilities #map-editor{grid-template-columns:1fr}.mode-indoor #map-editor .position-actions{justify-content:flex-start}.mode-indoor #map-editor .position-actions button{flex:1}}
