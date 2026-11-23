@@ -1,6 +1,6 @@
 # RestFlow 전국 통합 앱 서비스 실행 안내
 
-이 안내는 `RestFlow-Integrated-TMAP-Unified-R2.zip` 기준입니다. 별도로 전달받은 R2 ZIP을 압축 해제한 뒤 해당 폴더에서 실행합니다. 이용자 앱은 RestFlow에 등록된 시설의 운영 상태·혼잡도와 TMAP 보행 경로를 보여줍니다. 행사장별 단기 설치형은 [11월 13일 버전 안내](SETUP-PORTABLE-20261113.md)를 참고하세요.
+이 안내는 `RestFlow-Integrated-TMAP-Unified-R2.zip` 기준입니다. 이 브랜치를 내려받아 소스 폴더에서 실행합니다. 이용자 앱은 RestFlow에 등록된 시설의 운영 상태·혼잡도와 TMAP 보행 경로를 보여줍니다. 행사장별 단기 설치형은 [11월 13일 버전 안내](https://github.com/useouseo/iot_project/blob/release/portable-20261113/docs/SETUP-PORTABLE-20261113.md)를 참고하세요.
 
 ## 서버와 MariaDB
 
@@ -18,10 +18,10 @@
 
 ## Raspberry Pi와 환기팬 연결
 
-1. ZIP의 `raspberry_pi` 폴더를 Pi로 복사합니다. `restflow-fan.env.example`을 `/etc/restflow-fan.env`로 복사하고 `RESTFLOW_SERVER_URL`, `RESTFLOW_DEVICE_ID`, `RESTFLOW_DEVICE_TOKEN`을 입력합니다. 서버 주소와 장치 ID는 센서와 같고, 토큰은 Raspberry Pi용입니다.
+1. 소스의 `raspberry_pi` 폴더를 Pi로 복사합니다. `restflow-fan.env.example`을 `/etc/restflow-fan.env`로 복사하고 `RESTFLOW_SERVER_URL`, `RESTFLOW_DEVICE_ID`, `RESTFLOW_DEVICE_TOKEN`을 입력합니다. 서버 주소와 장치 ID는 센서와 같고, 토큰은 Raspberry Pi용입니다.
 2. Pi에서 환경변수를 읽고 `python3 fan_controller.py --dry-run`으로 먼저 명령 수신을 확인합니다. 관리자 웹의 구역 카드에서 수동 출력을 바꿔 Pi가 새 명령을 받고 적용값을 회신하는지 확인합니다.
 3. 전원을 끄고 BCM GPIO18(물리 12번)을 XY-MOS의 제어 입력에, Pi GND를 제어측 GND에 연결합니다. 5V 팬은 MOSFET 부하측과 별도 정격 5V 전원을 사용합니다. 기판 단자와 팬 극성은 실물 표기에 맞춥니다.
-4. ZIP의 `raspberry_pi/README.md`에 따라 `python3-rpi.gpio`와 `restflow-fan.service`를 설치합니다. 제공 서비스는 `/opt/restflow/raspberry_pi` 경로와 `User=pi`를 사용하므로 실제 환경과 맞는지 확인합니다. 기본 출력 신호는 GPIO18의 1kHz 소프트웨어 PWM입니다.
+4. 소스의 `raspberry_pi/README.md`에 따라 `python3-rpi.gpio`와 `restflow-fan.service`를 설치합니다. 제공 서비스는 `/opt/restflow/raspberry_pi` 경로와 `User=pi`를 사용하므로 실제 환경과 맞는지 확인합니다. 기본 출력 신호는 GPIO18의 1kHz 소프트웨어 PWM입니다.
 
 ## 휴대폰 앱과 현장 시험
 

@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "RestFlow",
+    "slug": "restflow-mobile",
+    "version": "0.2.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "scheme": "restflow",
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "현재 위치 주변의 시설과 도보 경로를 표시하기 위해 위치를 사용합니다."
+        }
+      ]
+    ],
+    "android": {
+      "package": "com.restflow.mobile",
+      "versionCode": 2,
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
+    },
+    "ios": {
+      "bundleIdentifier": "com.restflow.mobile",
+      "buildNumber": "2",
+      "supportsTablet": false
+    }
+  }
+}

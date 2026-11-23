@@ -1,0 +1,27 @@
+{
+  "name": "restflow-mobile",
+  "version": "0.2.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "start": "expo start --go --tunnel ngrok",
+    "start:tunnel": "expo start --go --tunnel ngrok",
+    "start:lan": "expo start --go --lan",
+    "android": "expo run:android",
+    "check": "expo-doctor",
+    "export:android": "expo export --platform android"
+  },
+  "dependencies": {
+    "@expo/vector-icons": "^15.0.3",
+    "expo": "~58.0.26",
+    "expo-font": "~58.0.12",
+    "expo-location": "~58.0.22",
+    "react": "19.3.0",
+    "react-native": "0.88.1",
+    "react-native-safe-area-context": "~5.11.1",
+    "react-native-webview": "14.0.1"
+  },
+  "devDependencies": {
+    "@expo/ngrok": "^4.1.0"
+  }
+}

@@ -1,65 +1,47 @@
-"""Interactive first-run setup for RestFlow's MariaDB databases."""
+"""Configure the two MariaDB databases for RestFlow."""
 from getpass import getpass
 import json
-from pathlib import Path
-import sys
+import re
 
-import mariadb
+from pymysql import MySQLError
 
-from server import DB_CONFIG_PATH, Store, database_name
-
-
-def ask(label, default=''):
-    suffix=f' [{default}]' if default else ''
-    value=input(f'{label}{suffix}: ').strip()
-    return value or default
+from database import CONFIG_PATH, connect
 
 
 def main():
-    print('RestFlow MariaDB 최초 설정')
-    print('MariaDB 서비스가 실행 중이어야 합니다. 비밀번호는 화면에 표시되지 않습니다.')
-    existing={}
-    if DB_CONFIG_PATH.exists():
-        try:existing=json.loads(DB_CONFIG_PATH.read_text(encoding='utf-8'))
-        except (OSError,ValueError):pass
-    host=ask('DB 호스트',str(existing.get('host','localhost')))
-    try:port=int(ask('DB 포트',str(existing.get('port',3306))))
-    except ValueError:
-        print('포트는 숫자여야 합니다.');return 1
-    user=ask('DB 사용자',str(existing.get('user','root')))
-    password=getpass('DB 비밀번호(없으면 Enter): ')
-    live=ask('실사용 DB 이름',str(existing.get('database','restflow')))
-    demo=ask('시연 DB 이름',str(existing.get('demo_database','restflow_demo')))
-    try:
-        database_name(live);database_name(demo,'demo_database')
-        if live==demo:raise ValueError('실사용 DB와 시연 DB 이름은 달라야 합니다')
-    except ValueError as error:
-        print(error);return 1
-    config=dict(host=host,port=port,user=user,password=password,database=live,demo_database=demo)
-    try:
-        missing=[]
-        for name in (live,demo):
-            try:
-                connection=mariadb.connect(host=host,port=port,user=user,password=password,database=name)
-                connection.close()
-            except mariadb.Error as error:
-                if getattr(error,'errno',None)==1049:missing.append(name)
-                else:raise
-        if missing:
-            connection=mariadb.connect(host=host,port=port,user=user,password=password)
-            cursor=connection.cursor()
-            for name in missing:
-                cursor.execute(f'CREATE DATABASE `{name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci')
-            connection.commit();cursor.close();connection.close()
-        Store(config,False);Store(config,True)
-    except mariadb.Error as error:
-        print(f'MariaDB 설정 실패: {error}')
-        print('계정에 DB 생성 권한이 없으면 관리자 계정으로 DB를 먼저 만든 뒤 다시 실행하세요.')
-        return 1
-    DB_CONFIG_PATH.write_text(json.dumps(config,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-    print(f'설정 완료: {DB_CONFIG_PATH}')
-    print(f'실사용 DB={live}, 시연 DB={demo}')
-    return 0
+    previous = json.loads(CONFIG_PATH.read_text(encoding='utf-8')) if CONFIG_PATH.exists() else {}
+
+    def ask(key, label, default):
+        default = previous.get(key, default)
+        return input(f'{label} [{default}]: ').strip() or default
+
+    config = dict(
+        host=ask('host', 'DB 호스트', '127.0.0.1'),
+        port=int(ask('port', 'DB 포트', 3306)),
+        user=ask('user', 'DB 사용자', 'root'),
+        password=getpass('MariaDB 비밀번호: '),
+        database=ask('database', '실사용 DB', 'restflow_integrated'),
+        demo_database=ask('demo_database', '시연 DB', 'restflow_integrated_demo'),
+    )
+    names = (config['database'], config['demo_database'])
+    if not 1 <= config['port'] <= 65535:
+        raise ValueError('DB 포트 범위를 확인해 주세요.')
+    if names[0].lower() == names[1].lower() or any(not re.fullmatch(r'[A-Za-z0-9_]{1,64}', n) for n in names):
+        raise ValueError('서로 다른 DB 이름을 영문·숫자·밑줄로 입력해 주세요.')
+    for name in names:
+        try:
+            connect(config, name).close()
+        except MySQLError as error:
+            if error.args[0] != 1049:
+                raise
+            with connect(config) as connection, connection.cursor() as cursor:
+                cursor.execute(f'CREATE DATABASE IF NOT EXISTS `{name}` CHARACTER SET utf8mb4')
+    CONFIG_PATH.write_text(json.dumps(config, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    print('MariaDB 연결 설정을 저장했습니다.')
 
 
-if __name__=='__main__':sys.exit(main())
+if __name__ == '__main__':
+    try:
+        main()
+    except (ValueError, MySQLError) as error:
+        raise SystemExit(f'MariaDB 설정 실패: {error}')

@@ -1,0 +1,16 @@
+[Unit]
+Description=RestFlow GPIO18 fan controller
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/opt/restflow/raspberry_pi
+EnvironmentFile=/etc/restflow-fan.env
+ExecStart=/usr/bin/python3 /opt/restflow/raspberry_pi/fan_controller.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

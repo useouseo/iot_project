@@ -6,6 +6,7 @@
 #include <Preferences.h>
 #include <VL53L1X.h>
 #include <ArduinoJson.h>
+#include <DHT.h>
 #include <time.h>
 #include "direction.h"
 #if __has_include("secrets.h")
@@ -15,6 +16,7 @@
 #endif
 
 VL53L1X tof;
+DHT dht(DHT_PIN,DHT11);
 DirectionCounter counter;
 Preferences prefs;
 SemaphoreHandle_t lock;
@@ -42,17 +44,18 @@ const char* quality(){
   if(!sensorGood||uint32_t(millis()-lastSample)>2000||time(nullptr)<1700000000)return "fault";
   return pending.overflow?"degraded":"good";
 }
-int post(const char* path,JsonDocument &doc){
+int post(const char* path,JsonDocument &doc,String *response=nullptr){
   WiFiClientSecure tls;tls.setCACert(ROOT_CA);HTTPClient http;
   String url=String(API_BASE)+path;
   if(!url.startsWith("https://"))return -1;
   if(!http.begin(tls,url))return -1;
   http.setConnectTimeout(2500);http.setTimeout(2500);
   http.addHeader("Content-Type","application/json");http.addHeader("Authorization",String("Bearer ")+DEVICE_TOKEN);
-  String body;serializeJson(doc,body);int result=http.POST(body);http.end();return result;
+  String body;serializeJson(doc,body);int result=http.POST(body);
+  if(response && result>0)*response=http.getString();http.end();return result;
 }
 void networkTask(void*){
-  uint32_t heartbeat=0,reconnect=0;
+  uint32_t heartbeat=0,environmentAt=0,reconnect=0;
   for(;;){
     if(WiFi.status()!=WL_CONNECTED){
       if(uint32_t(millis()-reconnect)>10000){reconnect=millis();WiFi.reconnect();}
@@ -77,8 +80,19 @@ void networkTask(void*){
       }else{Serial.printf("Delivery pending (HTTP %d). Check clock / ID / token / TLS.\n",status);vTaskDelay(pdMS_TO_TICKS(3000));}
     }
     if(uint32_t(millis()-heartbeat)>30000){
-      StaticJsonDocument<256> doc;doc["device_id"]=DEVICE_ID;doc["quality"]=q;
+      StaticJsonDocument<256> doc;doc["device_id"]=DEVICE_ID;doc["boot_id"]=bootId;doc["quality"]=q;
       if(post("/api/heartbeat",doc)==200)heartbeat=millis();
+    }
+    if(uint32_t(millis()-environmentAt)>15000){
+      environmentAt=millis();
+      const float temperature=dht.readTemperature(),humidity=dht.readHumidity();
+      if(!isnan(temperature)&&!isnan(humidity)&&time(nullptr)>1700000000){
+        StaticJsonDocument<384> doc;doc["device_id"]=DEVICE_ID;doc["temperature_c"]=temperature;
+        doc["humidity_pct"]=humidity;
+        doc["occurred_at"]=uint32_t(time(nullptr));doc["boot_id"]=bootId;doc["quality"]=q;
+        int status=post("/api/environment",doc);
+        if(status!=200)Serial.printf("Environment delivery failed (HTTP %d).\n",status);
+      }else Serial.println("DHT11 reading or clock is not ready.");
     }
     vTaskDelay(pdMS_TO_TICKS(100));
   }
@@ -90,7 +104,7 @@ bool measure(uint8_t center,bool was,bool &valid,uint16_t &distance,uint8_t &sta
   return valid ? (was?mm<RELEASE_MM:mm<DETECT_MM) : false;
 }
 void setup(){
-  Serial.begin(115200);pinMode(39,INPUT_PULLUP);
+  Serial.begin(115200);pinMode(39,INPUT_PULLUP);dht.begin();
   lock=xSemaphoreCreateMutex();prefs.begin("restflow",false);
   if(prefs.getBytesLength("pending")==sizeof(pending))prefs.getBytes("pending",&pending,sizeof(pending));
   if(pending.version!=1 || pending.size>64)pending=Pending();
