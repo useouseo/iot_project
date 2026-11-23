@@ -1,6 +1,6 @@
 # RestFlow 휴대용 단기 설치 안내
 
-이 안내는 `20261113_tmap.zip`의 `spaces-v1` 기준입니다. 행사장·임시 시설에 ATOM Lite와 ToF 센서를 설치하고, 공간마다 별도 QR로 방문객 웹을 제공하는 구성입니다. 전국 통합 서비스는 [R2 실행 안내](SETUP-NATIONWIDE-R2.md)를 참고하세요.
+이 안내는 `20261113_tmap.zip`의 `spaces-v1` 기준입니다. 행사장·임시 시설에 ATOM Lite와 ToF 센서를 설치하고, 공간마다 별도 QR로 방문객 웹을 제공하는 구성입니다. 전국 통합 서비스는 [R2 실행 안내](https://github.com/useouseo/iot_project/blob/release/nationwide-r2/docs/SETUP-NATIONWIDE-R2.md)를 참고하세요.
 
 ## 준비물과 센서 배선
 
