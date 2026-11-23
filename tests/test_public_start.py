@@ -85,7 +85,7 @@ class PublicLauncherTests(unittest.TestCase):
                         headers={'Content-Type':'application/json','Cookie':cookie})
             with urlopen(req) as response:
                 result=json.load(response)
-            self.assertEqual(result['url'],public)
+            self.assertEqual(result['url'],public+'/f/'+store.festival()['public_id'])
             self.assertIn('<svg',result['svg'])
             raise KeyboardInterrupt()
         with patch.object(public_start,'sys',SimpleNamespace(platform='win32',executable=sys.executable)), \

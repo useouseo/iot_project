@@ -220,7 +220,7 @@ class HTTPTests(unittest.TestCase):
         status,body,_=self.request('/api/qr','POST',{'url':'http://localhost:8000/'},'integration-test-admin-token')
         self.assertEqual(status,200)
         result=json.loads(body)
-        self.assertEqual(result['url'],'https://event.example.org')
+        self.assertEqual(result['url'],'https://event.example.org/f/'+self.db.festival()['public_id'])
         self.assertIn('<svg',result['svg'])
         with self.db.connect() as db:
             after=db.execute("SELECT value FROM settings WHERE `key`='visitor_url'").fetchone()
@@ -234,7 +234,7 @@ class HTTPTests(unittest.TestCase):
                 self.assertEqual(self.request('/api/qr','POST',{'url':local},'integration-test-admin-token')[0],409)
             status,body,_=self.request('/api/qr','POST',{'url':'https://festival.example.org/'},'integration-test-admin-token')
             self.assertEqual(status,200)
-            self.assertEqual(json.loads(body)['url'],'https://festival.example.org/')
+            self.assertEqual(json.loads(body)['url'],'https://festival.example.org/f/'+self.db.festival()['public_id'])
         finally:
             self.server.public_url=original
 
@@ -244,7 +244,7 @@ class HTTPTests(unittest.TestCase):
         target='https://festival.example.org/guide?event=4'
         status,body,_=self.request('/api/visitor-url','PUT',{'url':target},'integration-test-admin-token')
         self.assertEqual(status,200)
-        self.assertEqual(json.loads(self.request('/api/admin',token='integration-test-admin-token')[1])['visitor_url'],target)
+        self.assertEqual(json.loads(self.request('/api/admin',token='integration-test-admin-token')[1])['visitor_url'],'https://festival.example.org/f/'+self.db.festival()['public_id'])
         with self.db.connect() as db:self.assertEqual(db.execute("SELECT value FROM settings WHERE `key`='visitor_url'").fetchone()['value'],target)
         status,svg,_=self.request('/api/qr.svg');self.assertEqual(status,200);self.assertIn(b'<svg',svg)
     def test_visitor_url_rejects_invalid_or_embedded_credentials(self):

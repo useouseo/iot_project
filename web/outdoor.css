@@ -1,0 +1,104 @@
+.mode-outdoor #map-surface,.mode-outdoor #map-editor,.mode-outdoor .upload-label,.mode-outdoor .coordinate-details{display:none!important}
+.mode-indoor .outdoor-section{display:none!important}
+#outdoor-map{width:100%;height:520px!important;min-height:360px;background:#edf3f1;isolation:isolate;overflow:hidden}
+.outdoor-tools{padding:16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+#outdoor-message{padding:0 16px 14px;margin:0;color:#35594e}
+#outdoor-detail{padding:16px;border-top:1px solid #dbe6e1}
+#outdoor-detail p{margin:8px 0}
+#geo-editor{padding:16px;background:#f2f7f4}
+#geo-editor label{display:inline-block;max-width:180px;margin:4px}
+/* Two-line shield pins match the original festival-map markers. */
+.geo-facility-marker{width:52px;height:70px;display:flex;align-items:flex-start;justify-content:center;padding-top:12px;overflow:visible}
+.geo-pin{position:relative;width:40px;height:51px;flex:none;padding:3px 0 1px;border:2px solid #fff;border-radius:15px 15px 13px 13px;background:#638876;color:white;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:1px;box-shadow:0 3px 6px #18372c44;cursor:pointer;touch-action:none;isolation:isolate}
+.geo-pin:after{content:"";position:absolute;bottom:-6px;left:calc(50% - 6px);width:11px;height:11px;transform:rotate(45deg);background:inherit;border-right:2px solid #fff;border-bottom:2px solid #fff;border-radius:0 0 3px 0;z-index:-1}
+#outdoor-map .geo-letter{font-size:20px;font-weight:800;line-height:1.1}
+#outdoor-map .geo-pin small{font-size:9px;font-weight:650;line-height:1.2;white-space:nowrap}
+.geo-pin.moderate{background:#b79a4d}.geo-pin.busy{background:#cd8c78}.geo-pin.unknown{background:#7b8782}
+.geo-pin.selected{outline:2px solid #426d5a;outline-offset:3px}
+.geo-pin.unplaced{opacity:.65;border-style:dashed}
+.editing-facilities .geo-pin{cursor:grab}.editing-facilities .geo-pin:active{cursor:grabbing}
+.geo-user-marker{width:24px;height:24px;position:relative}
+.geo-user-marker>span{display:block;width:19px;height:19px;background:#2781ec;border:3px solid white;border-radius:50%;box-shadow:0 1px 6px #2263a866}
+.geo-user-marker>strong{position:absolute;top:24px;left:50%;transform:translateX(-50%);white-space:nowrap;background:white;color:#1962b7;padding:1px 6px;border-radius:8px;font-size:11px;box-shadow:0 1px 4px #0002}
+#geo-draft-state{font-size:12px;color:#486b5a;margin-bottom:0}
+#outdoor-map button{font:inherit}
+@media(max-width:600px){#outdoor-map{height:440px!important}.outdoor-tools button{flex:1}}
+
+#outdoor-map .geo-pin.unknown small{font-size:8px;letter-spacing:-.4px}
+
+.geo-coordinate-fields{margin:10px 0 14px;font-size:12px}.geo-coordinate-fields summary{cursor:pointer;color:#486b5a}#geo-save,#geo-undo{margin:4px 8px 0 0}
+
+.mode-control{display:flex;align-items:center;gap:10px;margin:0;font-size:13px;font-weight:700;color:var(--ink);white-space:nowrap}
+.mode-control select{margin:0;width:auto;min-width:145px;font-weight:650;background:#fff}
+.mode-indoor .signed-in .upload-label{display:block}
+.outdoor-tools{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.outdoor-tools button{min-width:0;white-space:nowrap;min-height:44px;padding:10px 8px}
+.mode-indoor #map-editor[hidden],.mode-indoor .upload-label[hidden]{display:none!important}
+@media(max-width:600px){.mode-control{gap:7px;font-size:12px}.mode-control select{min-width:0;max-width:155px;font-size:12px}.event-context{gap:8px}.outdoor-tools{padding:12px;gap:8px}}
+
+.app-build{display:block!important;text-align:right;padding:4px 12px;font-size:10px!important;white-space:nowrap;color:#69776f}
+
+.geo-facility-marker,.geo-pin,.geo-pin>*{pointer-events:auto}#outdoor-map .geo-pin{cursor:pointer}.editing-facilities #outdoor-map .geo-pin{cursor:grab}
+
+/* Keep the administrator editor aligned with the original compact two-column layout. */
+.editing-facilities .facilities-grid>.form-stack{height:auto;grid-template-rows:auto auto;align-content:start}
+.editing-facilities .facilities-grid>.form-stack>.panel:first-child{overflow:visible}
+.editing-facilities .form-stack #toilet-form{flex:0 0 auto}
+.editing-facilities .form-stack #toilet-fields{flex:0 0 auto;overflow:visible}
+.editing-facilities .outdoor-tools,.editing-facilities #outdoor-message,.editing-facilities #outdoor-detail{display:none}
+.editing-facilities #outdoor-map{height:auto!important;min-height:280px;aspect-ratio:1.7;width:calc(100% - 20px);margin:0 10px 10px;border-radius:8px}
+.editing-facilities #geo-editor{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:5px 8px;align-items:center;padding:14px 16px}
+.editing-facilities #geo-editor[hidden]{display:none}
+.editing-facilities #geo-editor-title{grid-column:1;grid-row:1;font-size:13px}
+.editing-facilities #geo-editor>p:first-of-type{grid-column:1;grid-row:2;font-size:11px;margin:0;color:#69796e}
+.editing-facilities #geo-save{grid-column:2;grid-row:1/3;margin:0}
+.editing-facilities #geo-undo{grid-column:3;grid-row:1/3;margin:0}
+.editing-facilities .geo-coordinate-fields{grid-column:1/-1;grid-row:3;margin:4px 0}
+.editing-facilities #geo-draft-state{grid-column:1/-1;grid-row:4;margin:0;font-size:11px}
+@media(max-width:600px){
+ .editing-facilities #geo-editor{grid-template-columns:1fr 1fr}
+ .editing-facilities #geo-editor-title,.editing-facilities #geo-editor>p:first-of-type{grid-column:1/-1;grid-row:auto}
+ .editing-facilities #geo-save{grid-column:1;grid-row:auto}
+ .editing-facilities #geo-undo{grid-column:2;grid-row:auto}
+ .editing-facilities .geo-coordinate-fields,.editing-facilities #geo-draft-state{grid-column:1/-1;grid-row:auto}
+}
+
+.festival-kind{font-size:11px;border-radius:12px;padding:2px 9px;background:#edf3ef;color:#386b55;white-space:nowrap}
+.festival-dialog{width:min(460px,calc(100% - 32px));border:1px solid #d9e3dc;border-radius:16px;padding:24px;color:var(--ink);box-shadow:0 12px 60px #18372c33}
+.festival-dialog::backdrop{background:#173c2b66}
+.festival-dialog h2{font-size:21px;margin:0 0 20px}
+.festival-dialog input[type=text],#festival-name{width:100%}
+.festival-types{border:0;padding:0;margin:18px 0;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.festival-types legend{font-size:13px;font-weight:650;margin-bottom:8px}
+.festival-types label{position:relative;border:1px solid #cddbd2;border-radius:10px;padding:16px 10px;margin:0;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px}
+.festival-types label:has(input:checked){border:2px solid #49765f;background:#edf5ee}
+.festival-types input{width:auto;margin:0}.festival-types strong{font-size:19px}.festival-types small{font-size:11px;color:#65776b;white-space:nowrap}
+.festival-dialog p{font-size:12px;color:#64776c}.festival-dialog-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
+#festival-form-error{color:#ac3a32}
+#festival-select{max-width:260px}
+.event-context{flex-wrap:wrap}
+@media(max-width:600px){#festival-select{max-width:170px}#add-festival{font-size:11px;padding:7px 9px}.festival-kind{font-size:10px}.festival-dialog{padding:20px}.festival-types{gap:8px}.festival-types small{font-size:10px}}
+
+.festival-ended{max-width:600px;margin:18vh auto;padding:32px;font-family:system-ui,sans-serif;color:#234738}.festival-ended h1{font-size:26px;line-height:1.5}.festival-ended p{line-height:1.8;color:#62756a}.festival-dialog .danger{border-color:#cf8c80;color:#a34036}
+
+#delete-festival{white-space:nowrap;border-color:#d6aaa0;color:#a34d40}#add-festival{white-space:nowrap}.signed-in header{min-height:52px;height:auto;padding-top:8px;padding-bottom:8px}@media(max-width:600px){#delete-festival{font-size:11px;padding:7px 9px}}
+
+/* Header controls share a baseline; generic danger-button margins belong only in panels. */
+.event-context{align-items:center;min-width:0}
+.event-context .mode-control{align-items:center;margin:0}
+.event-context #festival-select,.event-context #add-festival,.event-context #delete-festival{height:36px;margin:0;box-sizing:border-box;font-size:12px;line-height:20px;padding:7px 12px;align-self:center}
+.event-context #festival-kind,.event-context #demo-chip{margin:0;align-self:center}
+.signed-in header nav{flex-shrink:0;align-self:center}
+@media(max-width:600px){.event-context #festival-select,.event-context #add-festival,.event-context #delete-festival{height:34px;font-size:11px;padding:6px 9px}}
+
+/* Visitor maps end after location/route guidance; details are already in the facility list. */
+.visitor-page #outdoor-detail,.visitor-page .map-footer,.visitor-page .app-build{display:none!important}
+
+/* Indoor placement uses the same save/undo bar as the outdoor entrance editor. */
+.mode-indoor.editing-facilities #map-editor{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 12px;align-items:center;padding:14px 16px;background:#f2f7f4}
+.mode-indoor #map-editor #save-position{display:inline-flex!important;align-items:center;justify-content:center}
+.mode-indoor #map-editor .position-actions{display:flex;gap:8px;align-items:center}
+.mode-indoor #map-editor .coordinate-details{grid-column:1/-1;margin:0;font-size:12px}
+.mode-indoor #map-editor .coordinate-details summary{cursor:pointer;color:#486b5a}
+.mode-indoor #map-editor .coordinate-details .form-row{max-width:360px}
+@media(max-width:600px){.mode-indoor.editing-facilities #map-editor{grid-template-columns:1fr}.mode-indoor #map-editor .position-actions{justify-content:flex-start}.mode-indoor #map-editor .position-actions button{flex:1}}
